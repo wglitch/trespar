@@ -126,8 +126,9 @@ h1 img {
 
 .global-actions #playButton {
   position: relative;
-  width: 94px;
-  min-height: 94px;
+  z-index: 2;
+  width: clamp(82px, 15vw, 104px);
+  min-height: clamp(82px, 15vw, 104px);
   margin: -41px -34px -31px 0;
   border-width: 2px;
   border-radius: 50%;
@@ -136,6 +137,7 @@ h1 img {
     radial-gradient(circle at 38% 34%, rgba(85, 213, 164, 0.17), transparent 48%),
     var(--panel-strong);
   color: var(--play);
+  overflow: hidden;
   font-size: 2.45rem;
   line-height: 1;
   box-shadow:
@@ -143,12 +145,27 @@ h1 img {
     0 0 0 1px rgba(85, 213, 164, 0.11);
 }
 
-.global-actions #playButton span {
-  transform: translateX(3px);
+.global-actions #playButton img {
+  display: block;
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translate(-3%, 0);
 }
 
-.global-actions #playButton.stopping span {
-  transform: none;
+.global-actions #playButton .stop-mark {
+  display: none;
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  line-height: 1;
+}
+
+.global-actions #playButton.stopping img {
+  display: none;
+}
+
+.global-actions #playButton.stopping .stop-mark {
+  display: block;
 }
 
 .global-actions #playButton.stopping {
@@ -165,28 +182,14 @@ h1 img {
 }
 
 .mute-glyph {
-  position: relative;
-  width: 18px;
-  height: 16px;
-}
-
-.mute-glyph::before {
-  position: absolute;
-  inset: 3px 8px 3px 0;
-  background:
-    linear-gradient(135deg, transparent 0 34%, currentColor 35% 65%, transparent 66%),
-    currentColor;
-  clip-path: polygon(0 28%, 34% 28%, 76% 0, 76% 100%, 34% 72%, 0 72%);
-  content: "";
-}
-
-.mute-glyph::after {
-  position: absolute;
-  inset: -1px;
-  background:
-    linear-gradient(42deg, transparent 43%, currentColor 44% 56%, transparent 57%),
-    linear-gradient(-42deg, transparent 43%, currentColor 44% 56%, transparent 57%);
-  content: "";
+  display: block;
+  width: min(86px, 92%);
+  height: 28px;
+  object-fit: contain;
+  opacity: 0.3;
+  pointer-events: none;
+  transform: scale(0.95);
+  transition: opacity 120ms ease, transform 120ms ease;
 }
 
 .sync-panel {
@@ -364,6 +367,19 @@ h1 img {
   grid-column: 1 / -1;
   width: 103px;
   min-height: 36px;
+  overflow: hidden;
+  padding: 0 5px;
+}
+
+.track-controls .mute-button[aria-pressed="true"] .mute-glyph {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.track-controls .mute-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--track) 48%, transparent);
+  background: color-mix(in srgb, var(--track) 12%, transparent);
+  color: var(--track);
 }
 
 .take-window {
@@ -395,6 +411,7 @@ h1 img {
 .finish-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -403,8 +420,9 @@ h1 img {
 }
 
 .finish-icon-button {
-  width: 92px;
-  min-height: 70px;
+  position: relative;
+  width: clamp(58px, 18vw, 84px);
+  min-height: clamp(50px, 15vw, 66px);
   padding: 0;
   overflow: hidden;
   border-color: rgba(245, 242, 233, 0.11);
@@ -413,13 +431,19 @@ h1 img {
 
 .finish-icon-button img {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 #exportButton {
   box-shadow: inset 0 0 0 1px rgba(85, 213, 164, 0.08);
+}
+
+#exportButton img {
+  width: 94%;
+  height: 94%;
 }
 
 #resetButton {
@@ -559,14 +583,9 @@ h1 img {
   }
 
   .global-actions #playButton {
-    width: 104px;
-    min-height: 104px;
+    width: clamp(86px, 26vw, 104px);
+    min-height: clamp(86px, 26vw, 104px);
     margin: -46px -43px -35px 0;
-    font-size: 2.7rem;
-  }
-
-  .finish-actions {
-    flex-wrap: wrap;
   }
 
 }

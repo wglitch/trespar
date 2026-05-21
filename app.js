@@ -174,9 +174,11 @@ function renderTracks() {
     const waveform = fragment.querySelector(".waveform");
     const playTrackButton = fragment.querySelector(".play-track-button");
     const muteButton = fragment.querySelector(".mute-button");
+    const muteGlyph = fragment.querySelector(".mute-glyph");
     const clearButton = fragment.querySelector(".clear-button");
 
     card.dataset.track = index;
+    muteGlyph.src = `mute-${index + 1}.png`;
     recordButton.addEventListener("click", () => toggleRecording(track));
     playTrackButton.addEventListener("click", () => playTrack(track));
     muteButton.addEventListener("click", () => toggleMute(track));
@@ -215,7 +217,6 @@ function updateUi() {
   const hasTake = state.tracks.some((track) => track.blob);
   playButton.disabled = (!hasTake && !state.isPlaying) || !!state.activeTrack || state.exportBusy;
   playButton.classList.toggle("stopping", state.isPlaying);
-  playButton.querySelector("span").textContent = state.isPlaying ? "■" : "▶";
   playButton.setAttribute("aria-label", state.isPlaying ? "Stoppa" : "Spela alla spår");
   playButton.title = playButton.getAttribute("aria-label");
   exportButton.disabled = !hasTake || !!state.activeTrack || state.isPlaying || state.exportBusy;

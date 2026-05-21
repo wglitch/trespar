@@ -16,7 +16,8 @@
         <h1><img src="trespar.png" alt="" />Trespår</h1>
         <div class="global-actions">
           <button id="playButton" class="icon-button" type="button" aria-label="Spela alla spår" title="Spela alla spår" disabled>
-            <span aria-hidden="true">▶</span>
+            <img src="play-ui.png" alt="" aria-hidden="true" />
+            <span class="stop-mark" aria-hidden="true">■</span>
           </button>
         </div>
       </header>
@@ -43,11 +44,11 @@
         </details>
         <div class="finish-actions">
           <button id="exportButton" class="finish-icon-button command-button" type="button" aria-label="Gör färdig mix" title="Gör färdig mix" disabled>
-            <img src="mix.png" alt="" aria-hidden="true" />
+            <img src="mix-ui.png" alt="" aria-hidden="true" />
             <span class="sr-only">Gör färdig mix</span>
           </button>
           <button id="resetButton" class="finish-icon-button ghost-button" type="button" aria-label="Börja om" title="Börja om" disabled>
-            <img src="nollstall.png" alt="" aria-hidden="true" />
+            <img src="nollstall-ui.png" alt="" aria-hidden="true" />
             <span class="sr-only">Börja om</span>
           </button>
           <label class="open-mix-button ghost-button">
@@ -84,7 +85,7 @@
               <span aria-hidden="true">▶</span>
             </button>
             <button class="mute-button icon-button toggle-button" type="button" aria-label="Tysta spår" title="Tysta spår" aria-pressed="false" disabled>
-              <span class="mute-glyph" aria-hidden="true"></span>
+              <img class="mute-glyph" alt="" aria-hidden="true" />
             </button>
           </div>
           <div class="take-window">
