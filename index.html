@@ -15,6 +15,9 @@
       <header class="topbar">
         <h1><img src="trespar.png" alt="" />Trespår</h1>
         <div class="global-actions">
+          <button id="wakeButton" class="wake-button icon-button" type="button" aria-label="Väck ljudet" title="Väck ljudet">
+            <img src="wake-ui.png" alt="" aria-hidden="true" />
+          </button>
           <button id="playButton" class="icon-button" type="button" aria-label="Spela alla spår" title="Spela alla spår" disabled>
             <img src="play-ui.png" alt="" aria-hidden="true" />
             <span class="stop-mark" aria-hidden="true">■</span>
@@ -23,14 +26,6 @@
       </header>
 
       <p id="statusText" class="status" role="status"></p>
-      <aside id="audioWarning" class="audio-warning" hidden>
-        <p id="audioWarningText">Ljudet verkar ha somnat.</p>
-        <div class="audio-warning-actions">
-          <button id="wakeAudioButton" class="command-button" type="button">Väck ljudet</button>
-          <button id="ignoreAudioButton" class="ghost-button" type="button">Ignorera</button>
-          <button id="reloadAudioButton" class="command-button" type="button" hidden>Ladda om</button>
-        </div>
-      </aside>
 
       <section id="tracks" class="tracks" aria-label="Spår"></section>
 
@@ -84,6 +79,16 @@
         </section>
       </footer>
     </main>
+    <dialog id="introDialog" class="intro-dialog">
+      <div class="intro-copy">
+        <img src="wake-ui.png" alt="" aria-hidden="true" />
+        <div>
+          <h2>Trespår sparar dina tagningar</h2>
+          <p>Om ljudet tystnar efter att du bytt app på mobilen, väck ljudet med den här knappen.</p>
+        </div>
+      </div>
+      <button id="introOkayButton" class="command-button" type="button">Okej</button>
+    </dialog>
 
     <template id="trackTemplate">
       <article class="track-card">
