@@ -21,9 +21,7 @@
         </div>
       </header>
 
-      <p id="statusText" class="status" role="status">
-        Spela in spår ett.
-      </p>
+      <p id="statusText" class="status" role="status"></p>
 
       <section id="tracks" class="tracks" aria-label="Spår"></section>
 
@@ -39,14 +37,29 @@
                 </g>
               </svg>
             </span>
-            <input id="syncSlider" type="range" min="0" max="600" step="10" value="0" />
+            <input id="syncSlider" type="range" min="0" max="600" step="10" value="0" aria-label="Passa ihop nya spår" />
             <output id="syncValue" for="syncSlider">auto</output>
           </label>
         </details>
         <div class="finish-actions">
           <button id="exportButton" class="command-button" type="button" disabled>Gör färdig mix</button>
-          <button id="resetButton" class="ghost-button" type="button" disabled>Nollställ</button>
+          <button id="resetButton" class="ghost-button" type="button" disabled>Börja om</button>
+          <label class="open-mix-button ghost-button">
+            Öppna ljudfil
+            <input id="openMixInput" type="file" accept="audio/*" />
+          </label>
         </div>
+        <section id="mixPanel" class="mix-panel" hidden>
+          <label class="mix-name">
+            <span>Namn</span>
+            <input id="mixName" type="text" maxlength="80" />
+          </label>
+          <audio id="mixPlayer" controls preload="metadata"></audio>
+          <div class="mix-actions">
+            <button id="saveMixButton" class="command-button" type="button">Spara ljudfil</button>
+            <span id="mixFormat" class="mix-format"></span>
+          </div>
+        </section>
       </footer>
     </main>
 
@@ -64,14 +77,13 @@
             <button class="mute-button icon-button toggle-button" type="button" aria-label="Tysta spår" title="Tysta spår" aria-pressed="false" disabled>
               <span class="mute-glyph" aria-hidden="true"></span>
             </button>
-            <button class="clear-button icon-button ghost-button" type="button" aria-label="Radera spår" title="Radera spår" disabled>
-              <span aria-hidden="true">×</span>
-            </button>
           </div>
           <div class="take-window">
-            <div class="take-progress"></div>
             <canvas class="waveform" aria-hidden="true"></canvas>
           </div>
+          <button class="clear-button icon-button ghost-button" type="button" aria-label="Radera spår" title="Radera spår" disabled>
+            <span aria-hidden="true">×</span>
+          </button>
         </div>
       </article>
     </template>

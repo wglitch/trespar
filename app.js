@@ -17,6 +17,13 @@ const statusText = document.querySelector("#statusText");
 const syncSlider = document.querySelector("#syncSlider");
 const syncValue = document.querySelector("#syncValue");
 const timingShift = document.querySelector("#timingShift");
+const timingWaves = document.querySelector(".timing-waves");
+const mixPanel = document.querySelector("#mixPanel");
+const mixName = document.querySelector("#mixName");
+const mixPlayer = document.querySelector("#mixPlayer");
+const saveMixButton = document.querySelector("#saveMixButton");
+const openMixInput = document.querySelector("#openMixInput");
+const mixFormat = document.querySelector("#mixFormat");
 
 const state = {
   audioContext: null,
@@ -37,6 +44,9 @@ const state = {
   exportBusy: false,
   baseDuration: 0,
   manualSyncOffset: 0,
+  mixBlob: null,
+  mixUrl: "",
+  mixMimeType: "",
   tracks: [],
 };
 
@@ -45,6 +55,18 @@ state.manualSyncOffset = loadSavedSyncOffset();
 function chooseMimeType() {
   if (!window.MediaRecorder) return "";
   return preferredMimes.find((mime) => MediaRecorder.isTypeSupported(mime)) || "";
+}
+
+function chooseMixMimeType() {
+  if (!window.MediaRecorder) return "";
+  const mixes = [
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/webm;codecs=opus",
+    "audio/ogg;codecs=opus",
+    "audio/webm",
+  ];
+  return mixes.find((mime) => MediaRecorder.isTypeSupported(mime)) || "";
 }
 
 function fileExtension(mimeType) {
@@ -124,7 +146,6 @@ function renderTracks() {
     const card = fragment.querySelector(".track-card");
     const recordButton = fragment.querySelector(".record-button");
     const recordLabel = recordButton.querySelector("b");
-    const progress = fragment.querySelector(".take-progress");
     const waveform = fragment.querySelector(".waveform");
     const playTrackButton = fragment.querySelector(".play-track-button");
     const muteButton = fragment.querySelector(".mute-button");
@@ -144,11 +165,11 @@ function renderTracks() {
       livePeaks: [],
       livePeakCursor: 0,
       syncOffset: 0,
+      playFraction: 0,
       elements: {
         card,
         recordButton,
         recordLabel,
-        progress,
         waveform,
         playTrackButton,
         muteButton,
@@ -173,7 +194,7 @@ function updateUi() {
   state.tracks.forEach((track) => {
     const readyForOverdub = track.index === 0 || state.baseDuration > 0;
     const busyElsewhere = !!state.activeTrack && state.activeTrack !== track;
-    const { recordButton, recordLabel, playTrackButton, muteButton, clearButton, progress } =
+    const { recordButton, recordLabel, playTrackButton, muteButton, clearButton } =
       track.elements;
     recordButton.disabled =
       !readyForOverdub ||
@@ -182,6 +203,7 @@ function updateUi() {
       state.exportBusy;
     recordButton.classList.toggle("recording", state.activeTrack === track);
     recordButton.classList.toggle("armed", !track.blob && readyForOverdub);
+    recordButton.classList.toggle("has-take", !!track.blob);
     recordLabel.textContent = state.activeTrack === track
       ? "Stoppa"
       : track.blob
@@ -191,9 +213,7 @@ function updateUi() {
     muteButton.disabled = !track.blob;
     playTrackButton.disabled = !track.blob || !!state.activeTrack || state.exportBusy;
     clearButton.disabled = !track.blob || !!state.activeTrack;
-    if (!state.isPlaying && state.activeTrack !== track) {
-      setPlayhead(track, 0);
-    }
+    if (!state.isPlaying && state.activeTrack !== track) drawTrackWaveform(track);
   });
 }
 
@@ -227,7 +247,6 @@ async function startRecording(track) {
     : new MediaRecorder(state.micStream);
   state.activeTrack = track;
   state.recordStartedAt = performance.now();
-  track.elements.progress.style.width = "0";
   track.muted = false;
   track.livePeaks = [];
   track.livePeakCursor = 0;
@@ -393,6 +412,10 @@ function stopTransport() {
   window.clearTimeout(state.transportStopTimer);
   window.cancelAnimationFrame(state.transportFrame);
   state.transportStopTimer = 0;
+  state.tracks.forEach((track) => {
+    track.playFraction = 0;
+    drawTrackWaveform(track);
+  });
   updateUi();
 }
 
@@ -403,9 +426,13 @@ function animateTransport(duration) {
     const elapsed = Math.max(0, state.audioContext.currentTime - state.transportStartedAt);
     const bounded = Math.min(duration, elapsed);
     state.transportTracks.forEach((track) => {
-      setPlayhead(track, bounded / duration);
+      track.playFraction = bounded / duration;
+      drawTrackWaveform(track);
     });
-    if (state.activeTrack) setPlayhead(state.activeTrack, bounded / duration);
+    if (state.activeTrack) {
+      state.activeTrack.playFraction = bounded / duration;
+      drawLiveWaveform(state.activeTrack);
+    }
     state.transportFrame = window.requestAnimationFrame(tick);
   };
   tick();
@@ -415,7 +442,8 @@ function animateRecordClock(track) {
   const tick = () => {
     if (state.activeTrack !== track) return;
     const elapsed = (performance.now() - state.recordStartedAt) / 1000;
-    setPlayhead(track, state.baseDuration ? elapsed / state.baseDuration : 1);
+    track.playFraction = state.baseDuration ? elapsed / state.baseDuration : 1;
+    drawLiveWaveform(track);
     state.transportFrame = window.requestAnimationFrame(tick);
   };
   tick();
@@ -468,10 +496,9 @@ function drawEmptyWaveform(track) {
   context.stroke();
 }
 
-function drawBufferWaveform(track) {
+function getBufferPeaks(track) {
   if (!track.buffer) {
-    drawEmptyWaveform(track);
-    return;
+    return [];
   }
 
   const channel = track.buffer.getChannelData(0);
@@ -480,8 +507,11 @@ function drawBufferWaveform(track) {
     ? Math.min(channel.length - firstSample, Math.floor(state.baseDuration * track.buffer.sampleRate))
     : channel.length - firstSample;
   const barCount = waveformBars;
-  const sampleWindow = Math.max(1, Math.floor(visibleSamples / barCount));
-  const peaks = Array.from({ length: barCount }, (_, index) => {
+  const naturalBars = state.baseDuration && track.index > 0
+    ? Math.max(1, Math.min(barCount, Math.round((visibleSamples / track.buffer.sampleRate / state.baseDuration) * barCount)))
+    : barCount;
+  const sampleWindow = Math.max(1, Math.floor(visibleSamples / naturalBars));
+  const peaks = Array.from({ length: naturalBars }, (_, index) => {
     let peak = 0;
     const start = firstSample + index * sampleWindow;
     const end = Math.min(channel.length, start + sampleWindow);
@@ -490,16 +520,30 @@ function drawBufferWaveform(track) {
     }
     return peak;
   });
-  drawPeakWaveform(track, normalizePeaks(peaks));
+  while (peaks.length < barCount) peaks.push(0);
+  return normalizePeaks(peaks);
+}
+
+function drawTrackWaveform(track) {
+  if (track.buffer) {
+    drawPeakWaveform(track, getBufferPeaks(track), { playFraction: track.playFraction || 0 });
+    return;
+  }
+  drawEmptyWaveform(track);
+}
+
+function drawBufferWaveform(track) {
+  drawTrackWaveform(track);
 }
 
 function drawLiveWaveform(track) {
   drawPeakWaveform(track, normalizePeaks(track.livePeaks), {
     activeFraction: getLiveFraction(track),
+    playFraction: track.playFraction || 0,
   });
 }
 
-function drawPeakWaveform(track, peaks, { activeFraction = 1 } = {}) {
+function drawPeakWaveform(track, peaks, { activeFraction = 1, playFraction = 0 } = {}) {
   const { waveform } = track.elements;
   const context = waveform.getContext("2d");
   const { width, height, ratio } = resizeCanvas(waveform);
@@ -534,6 +578,19 @@ function drawPeakWaveform(track, peaks, { activeFraction = 1 } = {}) {
     context.lineTo(width, center);
     context.stroke();
   }
+
+  if (playFraction > 0 && playFraction < 1) {
+    const playX = width * playFraction;
+    const glowWidth = Math.max(26 * ratio, width * 0.065);
+    const glow = context.createLinearGradient(playX - glowWidth, 0, playX + glowWidth, 0);
+    glow.addColorStop(0, getTrackColor(track, 0));
+    glow.addColorStop(0.5, getTrackColor(track, 0.7));
+    glow.addColorStop(1, getTrackColor(track, 0));
+    context.globalCompositeOperation = "screen";
+    context.fillStyle = glow;
+    context.fillRect(playX - glowWidth, 0, glowWidth * 2, height);
+    context.globalCompositeOperation = "source-over";
+  }
 }
 
 function normalizePeaks(peaks) {
@@ -567,11 +624,6 @@ function getLiveFraction(track) {
   return 1;
 }
 
-function setPlayhead(track, fraction) {
-  const bounded = Math.max(0, Math.min(1, fraction || 0));
-  track.elements.progress.style.left = `${bounded * 100}%`;
-}
-
 function getTrackColor(track, alpha) {
   const colors = [
     [88, 211, 194],
@@ -589,15 +641,14 @@ async function exportMix() {
   try {
     state.exportBusy = true;
     updateUi();
-    setStatus("Exporterar mixen i realtid...");
+    setStatus("Gör färdig mixen...");
     const context = await ensureAudioContext();
     const destination = context.createMediaStreamDestination();
     const outputGain = context.createGain();
     outputGain.gain.value = 0.82 / Math.max(1, mixTracks.length * 0.72);
     outputGain.connect(destination);
-    outputGain.connect(context.destination);
 
-    const mimeType = chooseMimeType();
+    const mimeType = chooseMixMimeType();
     const recorder = mimeType
       ? new MediaRecorder(destination.stream, { mimeType })
       : new MediaRecorder(destination.stream);
@@ -637,14 +688,44 @@ async function exportMix() {
     outputGain.disconnect();
 
     const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
-    downloadBlob(blob, `trespar.${fileExtension(blob.type)}`);
-    setStatus(`Mixen är klar som ${fileExtension(blob.type).toUpperCase()}.`);
+    if (!mixName.value) mixName.value = nextMixName();
+    setReadyMix(blob);
+    setStatus("Mixen är klar.");
   } catch (error) {
     setStatus(error.message || "Exporten gick inte att göra.", true);
   } finally {
     state.exportBusy = false;
     updateUi();
   }
+}
+
+function setReadyMix(blob) {
+  if (state.mixUrl) URL.revokeObjectURL(state.mixUrl);
+  state.mixBlob = blob;
+  state.mixMimeType = blob.type;
+  state.mixUrl = URL.createObjectURL(blob);
+  mixPlayer.src = state.mixUrl;
+  mixPanel.hidden = false;
+  mixFormat.textContent = fileExtension(blob.type).toUpperCase();
+}
+
+function nextMixName() {
+  const storageKey = "trespar-next-take-number";
+  let number = 1;
+  try {
+    number = Math.max(1, Number(localStorage.getItem(storageKey)) || 1);
+    localStorage.setItem(storageKey, String(number + 1));
+  } catch {
+    number = 1;
+  }
+  return `Trespår tagning ${number}`;
+}
+
+function safeFileName(name) {
+  return (name.trim() || "Trespår tagning")
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function downloadBlob(blob, filename) {
@@ -669,16 +750,22 @@ exportButton.addEventListener("click", exportMix);
 resetButton.addEventListener("click", () => {
   stopTransport();
   state.tracks.forEach((track) => clearTrack(track, false));
-    setStatus("Alla spår är tomma igen.");
+    setStatus("");
+});
+saveMixButton.addEventListener("click", () => {
+  if (!state.mixBlob) return;
+  downloadBlob(state.mixBlob, `${safeFileName(mixName.value)}.${fileExtension(state.mixMimeType)}`);
+});
+openMixInput.addEventListener("change", () => {
+  const [file] = openMixInput.files;
+  if (!file) return;
+  setReadyMix(file);
+  mixName.value = file.name.replace(/\.[^.]+$/, "");
+  mixFormat.textContent = file.type || "ljudfil";
+  setStatus("Ljudfilen är öppen.");
 });
 syncSlider.addEventListener("input", () => {
-  state.manualSyncOffset = Number(syncSlider.value) / 1000;
-  syncValue.textContent = state.manualSyncOffset ? `+${syncSlider.value} ms` : "auto";
-  updateTimingWaves();
-  saveSyncOffset();
-  state.tracks.forEach((track) => {
-    if (track.buffer) drawBufferWaveform(track);
-  });
+  setManualSyncOffset(Number(syncSlider.value) / 1000);
 });
 
 renderTracks();
@@ -688,7 +775,7 @@ updateTimingWaves();
 window.addEventListener("resize", () => {
   state.tracks.forEach((track) => {
     if (track.buffer) {
-      drawBufferWaveform(track);
+      drawTrackWaveform(track);
     } else if (state.activeTrack === track && track.livePeaks.length) {
       drawLiveWaveform(track);
     } else {
@@ -698,6 +785,44 @@ window.addEventListener("resize", () => {
 });
 
 function updateTimingWaves() {
-  const shift = Math.round((state.manualSyncOffset / 0.6) * -28);
+  const shift = Math.round(24 - (state.manualSyncOffset / 0.6) * 48);
   timingShift.setAttribute("transform", `translate(${shift} 0)`);
+}
+
+let timingDrag = null;
+
+timingWaves.addEventListener("pointerdown", (event) => {
+  timingDrag = {
+    id: event.pointerId,
+    startX: event.clientX,
+    startOffset: state.manualSyncOffset,
+  };
+  timingWaves.setPointerCapture(event.pointerId);
+});
+
+timingWaves.addEventListener("pointermove", (event) => {
+  if (!timingDrag || timingDrag.id !== event.pointerId) return;
+  const box = timingWaves.getBoundingClientRect();
+  const delta = timingDrag.startX - event.clientX;
+  const next = timingDrag.startOffset + (delta / Math.max(1, box.width)) * 0.6;
+  setManualSyncOffset(next);
+});
+
+function stopTimingDrag(event) {
+  if (!timingDrag || timingDrag.id !== event.pointerId) return;
+  timingDrag = null;
+}
+
+timingWaves.addEventListener("pointerup", stopTimingDrag);
+timingWaves.addEventListener("pointercancel", stopTimingDrag);
+
+function setManualSyncOffset(seconds) {
+  state.manualSyncOffset = Math.max(0, Math.min(0.6, seconds));
+  syncSlider.value = String(Math.round(state.manualSyncOffset * 1000 / 10) * 10);
+  syncValue.textContent = state.manualSyncOffset ? `+${syncSlider.value} ms` : "auto";
+  updateTimingWaves();
+  saveSyncOffset();
+  state.tracks.forEach((track) => {
+    if (track.buffer) drawBufferWaveform(track);
+  });
 }

@@ -59,6 +59,7 @@ button:disabled {
 }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -121,6 +122,19 @@ h1 img {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.global-actions #playButton {
+  position: relative;
+  width: 76px;
+  min-height: 76px;
+  margin: -31px -26px -22px 0;
+  border-radius: 50%;
+  border-color: rgba(85, 213, 164, 0.44);
+  background: var(--panel-strong);
+  color: var(--play);
+  font-size: 1.3rem;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
 }
 
 .icon-button {
@@ -191,6 +205,8 @@ h1 img {
   display: block;
   height: 54px;
   padding: 4px 0;
+  cursor: ew-resize;
+  touch-action: none;
 }
 
 .timing-waves svg {
@@ -215,17 +231,14 @@ h1 img {
   stroke: var(--gold);
 }
 
-.take-progress {
-  display: block;
-  width: 0;
-  height: 100%;
-  background: linear-gradient(90deg, var(--play), var(--blue));
-}
-
 .status {
-  min-height: 28px;
+  min-height: 0;
   margin: 8px 0 0;
   padding: 0 4px;
+}
+
+.status:empty {
+  display: none;
 }
 
 .status.error {
@@ -257,21 +270,22 @@ h1 img {
 
 .track-body {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) 42px;
   align-items: center;
   gap: 10px;
 }
 
 .track-controls {
   display: grid;
-  grid-template-columns: repeat(4, 38px);
+  grid-template-columns: repeat(2, 48px);
   gap: 7px;
 }
 
-.record-button {
+.record-button,
+.play-track-button {
   display: grid;
-  width: 38px;
-  min-height: 38px;
+  width: 48px;
+  min-height: 48px;
   place-items: center;
   padding: 0;
   border: 1px solid rgba(255, 90, 79, 0.36);
@@ -283,8 +297,8 @@ h1 img {
 }
 
 .record-button span {
-  width: 17px;
-  height: 17px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: var(--record);
   box-shadow: 0 0 0 10px rgba(255, 90, 79, 0.12);
@@ -308,26 +322,33 @@ h1 img {
   box-shadow: 0 0 0 8px color-mix(in srgb, var(--track) 14%, transparent);
 }
 
+.record-button.has-take:not(.recording) {
+  border-color: var(--line);
+  background: transparent;
+}
+
+.record-button.has-take:not(.recording) span {
+  background: var(--record);
+  box-shadow: none;
+}
+
+.track-controls .mute-button {
+  grid-column: 1 / -1;
+  width: 103px;
+  min-height: 36px;
+}
+
 .take-window {
   position: relative;
   display: grid;
-  height: 72px;
+  height: 106px;
   overflow: hidden;
   background: transparent;
 }
 
-.take-progress,
 .waveform {
   position: absolute;
   inset: 0;
-}
-
-.take-progress {
-  right: auto;
-  width: 2px;
-  background: rgba(245, 242, 233, 0.72);
-  opacity: 1;
-  transform: translateX(-1px);
 }
 
 .waveform {
@@ -345,12 +366,73 @@ h1 img {
 
 .finish-actions {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 10px;
 }
 
 .finish-actions .command-button {
   min-width: 150px;
+}
+
+.mix-panel {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.mix-panel[hidden] {
+  display: none;
+}
+
+.mix-name {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.mix-name input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(245, 242, 233, 0.05);
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.mix-panel audio {
+  width: 100%;
+}
+
+.mix-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.open-mix-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.open-mix-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.mix-format {
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .sr-only {
@@ -373,27 +455,43 @@ h1 img {
   }
 
   .track-body {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) 34px;
     gap: 8px;
   }
 
   .track-controls {
-    grid-template-columns: repeat(4, 34px);
+    grid-template-columns: repeat(2, 44px);
     gap: 6px;
   }
 
   .take-window {
-    height: 68px;
+    height: 98px;
   }
 
   .track-controls .icon-button {
+    width: 44px;
+    min-height: 44px;
+  }
+
+  .record-button {
+    width: 44px;
+    min-height: 44px;
+  }
+
+  .track-controls .mute-button {
+    width: 94px;
+    min-height: 34px;
+  }
+
+  .clear-button {
     width: 34px;
     min-height: 34px;
   }
 
-  .record-button {
-    width: 34px;
-    min-height: 34px;
+  .global-actions #playButton {
+    width: 84px;
+    min-height: 84px;
+    margin: -35px -36px -26px 0;
   }
 
   .finish-actions {
