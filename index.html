@@ -11,18 +11,7 @@
     <main class="recorder-shell">
       <header class="topbar">
         <h1><img src="trespar.png" alt="" />Trespår</h1>
-        <button id="armMicButton" class="permission-button" type="button">
-          <span aria-hidden="true"></span>
-          Mikrofon
-        </button>
-      </header>
-
-      <section class="transport" aria-label="Transport">
-        <div class="clock">
-          <span id="clockValue">00:00.0</span>
-          <span id="lengthValue">Spår ett sätter längden</span>
-        </div>
-        <div class="transport-actions">
+        <div class="global-actions">
           <button id="playButton" class="icon-button" type="button" aria-label="Spela alla spår" title="Spela alla spår" disabled>
             <span aria-hidden="true">▶</span>
           </button>
@@ -30,10 +19,7 @@
             <span aria-hidden="true">■</span>
           </button>
         </div>
-        <div class="timeline" aria-hidden="true">
-          <span id="timelineFill"></span>
-        </div>
-      </section>
+      </header>
 
       <p id="statusText" class="status" role="status">
         Spela in spår ett.
@@ -43,15 +29,22 @@
 
       <footer class="finish-line">
         <details class="sync-panel">
-          <summary>Synk</summary>
-          <label>
-            Överdubbar tidigare
+          <summary>Passa ihop nya spår</summary>
+          <label class="timing-control">
+            <span class="timing-waves" aria-hidden="true">
+              <svg viewBox="0 0 180 54">
+                <path d="M4 16 H48 L54 11 L59 23 L65 5 L71 28 L77 9 L83 24 L89 12 L96 21 L102 14 L109 20 L116 16 H176" />
+                <g id="timingShift">
+                  <path d="M4 39 H48 L54 34 L59 46 L65 28 L71 51 L77 32 L83 47 L89 35 L96 44 L102 37 L109 43 L116 39 H176" />
+                </g>
+              </svg>
+            </span>
             <input id="syncSlider" type="range" min="0" max="600" step="10" value="0" />
             <output id="syncValue" for="syncSlider">auto</output>
           </label>
         </details>
         <div class="finish-actions">
-          <button id="exportButton" class="command-button" type="button" disabled>Exportera</button>
+          <button id="exportButton" class="command-button" type="button" disabled>Gör färdig mix</button>
           <button id="resetButton" class="ghost-button" type="button" disabled>Nollställ</button>
         </div>
       </footer>
@@ -59,16 +52,6 @@
 
     <template id="trackTemplate">
       <article class="track-card">
-        <header class="track-head">
-          <div class="track-title">
-            <h2 class="track-name"></h2>
-            <span class="track-state"></span>
-          </div>
-          <div class="track-actions">
-            <button class="clear-button ghost-button" type="button" disabled>Radera</button>
-          </div>
-        </header>
-
         <div class="track-body">
           <div class="track-controls">
             <button class="record-button" type="button" aria-label="Spela in">
@@ -78,7 +61,12 @@
             <button class="play-track-button icon-button" type="button" aria-label="Spela spår" title="Spela spår" disabled>
               <span aria-hidden="true">▶</span>
             </button>
-            <button class="mute-button icon-button toggle-button" type="button" aria-label="Tysta spår" title="Tysta spår" aria-pressed="false" disabled>M</button>
+            <button class="mute-button icon-button toggle-button" type="button" aria-label="Tysta spår" title="Tysta spår" aria-pressed="false" disabled>
+              <span class="mute-glyph" aria-hidden="true"></span>
+            </button>
+            <button class="clear-button icon-button ghost-button" type="button" aria-label="Radera spår" title="Radera spår" disabled>
+              <span aria-hidden="true">×</span>
+            </button>
           </div>
           <div class="take-window">
             <div class="take-progress"></div>

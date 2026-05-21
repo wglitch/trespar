@@ -52,7 +52,6 @@ button:disabled {
 }
 
 .topbar,
-.transport,
 .finish-line {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -83,7 +82,6 @@ h1 img {
   border-radius: 8px;
 }
 
-.permission-button,
 .command-button,
 .ghost-button,
 .toggle-button,
@@ -94,7 +92,6 @@ h1 img {
   color: var(--ink);
 }
 
-.permission-button,
 .command-button {
   display: inline-flex;
   align-items: center;
@@ -102,18 +99,6 @@ h1 img {
   gap: 10px;
   padding: 0 16px;
   background: var(--panel-strong);
-}
-
-.permission-button span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: currentColor;
-  color: var(--record);
-}
-
-.permission-button.ready span {
-  color: var(--play);
 }
 
 .ghost-button,
@@ -128,34 +113,11 @@ h1 img {
   color: var(--gold);
 }
 
-.transport {
-  display: grid;
-  grid-template-columns: minmax(170px, 1fr) auto minmax(140px, 1fr);
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding: 10px 12px;
-}
-
-.clock {
-  display: grid;
-  gap: 5px;
-}
-
-#clockValue {
-  font-variant-numeric: tabular-nums;
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-#lengthValue,
-.status,
-.track-state {
+.status {
   color: var(--muted);
 }
 
-.transport-actions,
-.track-actions {
+.global-actions {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -169,11 +131,32 @@ h1 img {
   background: transparent;
 }
 
-.timeline {
-  height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(245, 242, 233, 0.08);
+.mute-glyph {
+  position: relative;
+  width: 18px;
+  height: 16px;
+}
+
+.mute-glyph::before {
+  position: absolute;
+  inset: 3px 8px 3px 0;
+  background:
+    linear-gradient(135deg, transparent 0 34%, currentColor 35% 65%, transparent 66%),
+    currentColor;
+  clip-path: polygon(0 28%, 34% 28%, 76% 0, 76% 100%, 34% 72%, 0 72%);
+  content: "";
+}
+
+.mute-glyph::after {
+  position: absolute;
+  top: 0;
+  right: 1px;
+  width: 2px;
+  height: 18px;
+  background: currentColor;
+  content: "";
+  transform: rotate(42deg);
+  transform-origin: center;
 }
 
 .sync-panel {
@@ -186,9 +169,9 @@ h1 img {
   width: fit-content;
 }
 
-.sync-panel label {
+.timing-control {
   display: grid;
-  grid-template-columns: auto minmax(160px, 280px) auto;
+  grid-template-columns: minmax(160px, 230px) minmax(160px, 1fr) auto;
   align-items: center;
   gap: 10px;
   margin-top: 8px;
@@ -204,7 +187,34 @@ h1 img {
   font-variant-numeric: tabular-nums;
 }
 
-.timeline span,
+.timing-waves {
+  display: block;
+  height: 54px;
+  padding: 4px 0;
+}
+
+.timing-waves svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.timing-waves path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.timing-waves path:first-child {
+  stroke: var(--play);
+}
+
+#timingShift path {
+  stroke: var(--gold);
+}
+
 .take-progress {
   display: block;
   width: 0;
@@ -214,7 +224,7 @@ h1 img {
 
 .status {
   min-height: 28px;
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   padding: 0 4px;
 }
 
@@ -224,14 +234,13 @@ h1 img {
 
 .tracks {
   display: grid;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .track-card {
   display: grid;
-  gap: 8px;
-  padding: 5px 0;
+  padding: 3px 0;
 }
 
 .track-card[data-track="0"] {
@@ -246,51 +255,23 @@ h1 img {
   --track: #ff585f;
 }
 
-.track-head,
 .track-body {
   display: grid;
-  gap: 12px;
-}
-
-.track-head {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  padding: 0 2px;
-}
-
-.track-title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
-.track-name {
-  margin: 0;
-  font-size: 1.05rem;
-  letter-spacing: 0;
-}
-
-.track-state {
-  font-size: 0.86rem;
-}
-
-.track-body {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .track-controls {
   display: grid;
-  grid-template-columns: repeat(3, 42px);
+  grid-template-columns: repeat(4, 38px);
   gap: 7px;
 }
 
 .record-button {
   display: grid;
-  width: 42px;
-  min-height: 42px;
+  width: 38px;
+  min-height: 38px;
   place-items: center;
   padding: 0;
   border: 1px solid rgba(255, 90, 79, 0.36);
@@ -302,8 +283,8 @@ h1 img {
 }
 
 .record-button span {
-  width: 19px;
-  height: 19px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
   background: var(--record);
   box-shadow: 0 0 0 10px rgba(255, 90, 79, 0.12);
@@ -330,7 +311,7 @@ h1 img {
 .take-window {
   position: relative;
   display: grid;
-  height: 92px;
+  height: 72px;
   overflow: hidden;
   background: transparent;
 }
@@ -353,12 +334,6 @@ h1 img {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.track-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .finish-line {
@@ -393,21 +368,7 @@ h1 img {
     padding: 14px 0 24px;
   }
 
-  .transport {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
-  .transport-actions {
-    display: grid;
-    grid-template-columns: 42px 42px;
-  }
-
-  .track-title {
-    justify-content: space-between;
-  }
-
-  .sync-panel label {
+  .timing-control {
     grid-template-columns: 1fr;
   }
 
@@ -417,16 +378,22 @@ h1 img {
   }
 
   .track-controls {
-    grid-template-columns: repeat(2, 42px);
+    grid-template-columns: repeat(4, 34px);
+    gap: 6px;
   }
 
   .take-window {
-    height: 86px;
+    height: 68px;
   }
 
-  .mute-button {
-    grid-column: span 2;
-    width: 91px;
+  .track-controls .icon-button {
+    width: 34px;
+    min-height: 34px;
+  }
+
+  .record-button {
+    width: 34px;
+    min-height: 34px;
   }
 
   .finish-actions {
