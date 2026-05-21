@@ -52,6 +52,8 @@ const state = {
   openedMix: false,
   wakeLock: null,
   mixProgressFrame: 0,
+  audioRecoveryNeeded: false,
+  audioRecoveryPromise: null,
   tracks: [],
 };
 
@@ -109,15 +111,86 @@ function formatTime(seconds) {
   return `${minutes}:${wholeSeconds}.${tenths}`;
 }
 
-function ensureAudioContext() {
-  if (!state.audioContext) {
-    state.audioContext = new AudioContext({ latencyHint: "interactive" });
+async function ensureAudioContext({ fresh = false } = {}) {
+  if (fresh || !state.audioContext || state.audioContext.state === "closed") {
+    await replaceAudioContext();
   }
-  return state.audioContext.resume().then(() => state.audioContext);
+
+  try {
+    await state.audioContext.resume();
+  } catch {
+    if (!fresh) return ensureAudioContext({ fresh: true });
+    throw new Error("Ljudet vilar. Tryck en gang till.");
+  }
+
+  if (state.audioContext.state === "closed") {
+    return ensureAudioContext({ fresh: true });
+  }
+  if (state.audioContext.state === "interrupted" && !fresh) {
+    return ensureAudioContext({ fresh: true });
+  }
+  return state.audioContext;
+}
+
+async function replaceAudioContext() {
+  const oldContext = state.audioContext;
+  disconnectMeter();
+  state.audioContext = new AudioContext({ latencyHint: "interactive" });
+  state.audioContext.addEventListener("statechange", () => {
+    if (state.audioContext?.state === "interrupted") {
+      state.audioRecoveryNeeded = true;
+    }
+  });
+  if (oldContext && oldContext.state !== "closed") {
+    oldContext.close().catch(() => {
+      // Interrupted contexts may refuse to close cleanly.
+    });
+  }
+}
+
+function disconnectMeter() {
+  try {
+    state.meterSource?.disconnect();
+  } catch {
+    // The old graph may already be gone.
+  }
+  try {
+    state.analyser?.disconnect();
+  } catch {
+    // The old graph may already be gone.
+  }
+  state.meterSource = null;
+  state.analyser = null;
+}
+
+function hasLiveMicrophone() {
+  return !!state.micStream?.getAudioTracks().some((track) => track.readyState === "live");
+}
+
+function forgetMicrophone({ stopTracks = false } = {}) {
+  disconnectMeter();
+  if (stopTracks) {
+    state.micStream?.getTracks().forEach((track) => track.stop());
+  }
+  state.micStream = null;
+}
+
+function connectMicrophoneMeter(context) {
+  disconnectMeter();
+  state.meterSource = context.createMediaStreamSource(state.micStream);
+  state.analyser = context.createAnalyser();
+  state.analyser.fftSize = 256;
+  state.meterSource.connect(state.analyser);
 }
 
 async function prepareMicrophone() {
-  if (state.micStream) return state.micStream;
+  if (state.audioRecoveryNeeded) await recoverAudioSession({ freshContext: true });
+  if (state.micStream && !hasLiveMicrophone()) forgetMicrophone();
+  if (state.micStream && hasLiveMicrophone()) {
+    const context = await ensureAudioContext();
+    if (!state.analyser) connectMicrophoneMeter(context);
+    return state.micStream;
+  }
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     throw new Error("Den här webbläsaren saknar mikrofoninspelning.");
   }
@@ -131,18 +204,68 @@ async function prepareMicrophone() {
     },
     video: false,
   });
+  state.micStream.getAudioTracks().forEach((track) => {
+    track.addEventListener("ended", () => {
+      state.audioRecoveryNeeded = true;
+      forgetMicrophone();
+    });
+  });
 
   const context = await ensureAudioContext();
-  state.meterSource = context.createMediaStreamSource(state.micStream);
-  state.analyser = context.createAnalyser();
-  state.analyser.fftSize = 256;
-  state.meterSource.connect(state.analyser);
+  connectMicrophoneMeter(context);
   return state.micStream;
 }
 
 async function decodeBlob(blob) {
-  const context = await ensureAudioContext();
+  try {
+    const context = await ensureAudioContext();
+    return await decodeBlobWithContext(blob, context);
+  } catch {
+    await recoverAudioSession({ freshContext: true, redecodeTracks: false });
+    try {
+      const context = await ensureAudioContext();
+      return await decodeBlobWithContext(blob, context);
+    } catch {
+      throw new Error("Ljudet vaknade inte riktigt. Tryck igen.");
+    }
+  }
+}
+
+async function decodeBlobWithContext(blob, context) {
   return context.decodeAudioData(await blob.arrayBuffer());
+}
+
+async function recoverAudioSession({ freshContext = false, redecodeTracks = true } = {}) {
+  if (state.audioRecoveryPromise) return state.audioRecoveryPromise;
+
+  state.audioRecoveryPromise = (async () => {
+    if (state.micStream && !hasLiveMicrophone()) forgetMicrophone();
+    const context = await ensureAudioContext({ fresh: freshContext });
+
+    if (hasLiveMicrophone()) {
+      connectMicrophoneMeter(context);
+    }
+
+    if (redecodeTracks) {
+      await Promise.all(state.tracks.map(async (track) => {
+        if (!track.blob) return;
+        try {
+          track.buffer = await decodeBlobWithContext(track.blob, context);
+          drawTrackWaveform(track);
+        } catch {
+          // Keep the visible take and try again on the next user gesture.
+        }
+      }));
+    }
+
+    state.audioRecoveryNeeded = false;
+    updateUi();
+    return context;
+  })().finally(() => {
+    state.audioRecoveryPromise = null;
+  });
+
+  return state.audioRecoveryPromise;
 }
 
 async function requestScreenWakeLock() {
@@ -419,6 +542,15 @@ async function playTrack(track) {
 }
 
 async function playAll({ excludeTrack = null, soloTrack = null, forRecording = false } = {}) {
+  if (state.audioRecoveryNeeded || state.tracks.some((track) => track.blob && !track.buffer)) {
+    try {
+      await recoverAudioSession({ freshContext: state.audioRecoveryNeeded });
+    } catch {
+      setStatus("Ljudet vilar. Tryck en gang till.", true);
+      return;
+    }
+  }
+
   const playableTracks = state.tracks.filter((track) => {
     return track !== excludeTrack && track.buffer && (!soloTrack || track === soloTrack);
   });
@@ -699,6 +831,15 @@ function getTrackColor(track, alpha) {
 }
 
 async function exportMix() {
+  if (state.audioRecoveryNeeded || state.tracks.some((track) => track.blob && !track.buffer)) {
+    try {
+      await recoverAudioSession({ freshContext: state.audioRecoveryNeeded });
+    } catch {
+      setStatus("Ljudet vilar. Tryck en gang till.", true);
+      return;
+    }
+  }
+
   const mixTracks = state.tracks.filter((track) => track.buffer && !track.muted);
   if (!mixTracks.length) return;
 
@@ -892,6 +1033,37 @@ window.addEventListener("resize", () => {
     }
   });
 });
+
+function markAudioInterrupted() {
+  state.audioRecoveryNeeded = true;
+  stopTransport();
+  if (state.activeTrack) {
+    stopRecording();
+  } else if (state.micStream) {
+    forgetMicrophone({ stopTracks: true });
+  }
+  releaseScreenWakeLock();
+}
+
+async function recoverAfterReturn() {
+  if (document.visibilityState === "hidden" || !state.audioRecoveryNeeded) return;
+  try {
+    await recoverAudioSession({ freshContext: true });
+    setStatus("");
+  } catch {
+    setStatus("Ljudet vilar. Tryck en gang till.", true);
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    markAudioInterrupted();
+    return;
+  }
+  recoverAfterReturn();
+});
+window.addEventListener("pageshow", recoverAfterReturn);
+window.addEventListener("focus", recoverAfterReturn);
 
 function updateTimingWaves() {
   const shift = Math.round(24 - (state.manualSyncOffset / 0.6) * 48);
