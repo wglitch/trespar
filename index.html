@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trespår</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="recorder-shell">
+      <header class="topbar">
+        <h1>Trespår</h1>
+        <button id="armMicButton" class="permission-button" type="button">
+          <span aria-hidden="true"></span>
+          Mikrofon
+        </button>
+      </header>
+
+      <section class="transport" aria-label="Transport">
+        <div class="clock">
+          <span id="clockValue">00:00.0</span>
+          <span id="lengthValue">Spår ett sätter längden</span>
+        </div>
+        <div class="transport-actions">
+          <button id="playButton" class="icon-button" type="button" aria-label="Spela alla spår" title="Spela alla spår" disabled>
+            <span aria-hidden="true">▶</span>
+          </button>
+          <button id="stopButton" class="icon-button" type="button" aria-label="Stoppa" title="Stoppa" disabled>
+            <span aria-hidden="true">■</span>
+          </button>
+          <button id="exportButton" class="command-button" type="button" disabled>Exportera</button>
+          <button id="resetButton" class="ghost-button" type="button" disabled>Nollställ</button>
+        </div>
+        <div class="timeline" aria-hidden="true">
+          <span id="timelineFill"></span>
+        </div>
+      </section>
+
+      <p id="statusText" class="status" role="status">
+        Spela in spår ett.
+      </p>
+
+      <section id="tracks" class="tracks" aria-label="Spår"></section>
+    </main>
+
+    <template id="trackTemplate">
+      <article class="track-card">
+        <header class="track-head">
+          <div class="track-title">
+            <h2 class="track-name"></h2>
+            <span class="track-state"></span>
+          </div>
+          <div class="track-actions">
+            <button class="mute-button toggle-button" type="button" aria-pressed="false" disabled>Tyst</button>
+            <button class="clear-button ghost-button" type="button" disabled>Radera</button>
+          </div>
+        </header>
+
+        <div class="track-body">
+          <button class="record-button" type="button">
+            <span aria-hidden="true"></span>
+            <b>Spela in</b>
+          </button>
+          <div class="take-window">
+            <div class="take-progress"></div>
+            <canvas class="waveform" aria-hidden="true"></canvas>
+          </div>
+          <audio class="take-audio" controls preload="metadata"></audio>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
