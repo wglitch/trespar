@@ -184,7 +184,7 @@ function connectMicrophoneMeter(context) {
 }
 
 async function prepareMicrophone() {
-  if (state.audioRecoveryNeeded) await recoverAudioSession({ freshContext: true });
+  if (state.audioRecoveryNeeded) await recoverAudioSession({ freshContext: false });
   if (state.micStream && !hasLiveMicrophone()) forgetMicrophone();
   if (state.micStream && hasLiveMicrophone()) {
     const context = await ensureAudioContext();
@@ -248,7 +248,7 @@ async function recoverAudioSession({ freshContext = false, redecodeTracks = true
 
     if (redecodeTracks) {
       await Promise.all(state.tracks.map(async (track) => {
-        if (!track.blob) return;
+        if (!track.blob || track.buffer) return;
         try {
           track.buffer = await decodeBlobWithContext(track.blob, context);
           drawTrackWaveform(track);
@@ -544,7 +544,7 @@ async function playTrack(track) {
 async function playAll({ excludeTrack = null, soloTrack = null, forRecording = false } = {}) {
   if (state.audioRecoveryNeeded || state.tracks.some((track) => track.blob && !track.buffer)) {
     try {
-      await recoverAudioSession({ freshContext: state.audioRecoveryNeeded });
+      await recoverAudioSession();
     } catch {
       setStatus("Ljudet vilar. Tryck en gang till.", true);
       return;
@@ -833,7 +833,7 @@ function getTrackColor(track, alpha) {
 async function exportMix() {
   if (state.audioRecoveryNeeded || state.tracks.some((track) => track.blob && !track.buffer)) {
     try {
-      await recoverAudioSession({ freshContext: state.audioRecoveryNeeded });
+      await recoverAudioSession();
     } catch {
       setStatus("Ljudet vilar. Tryck en gang till.", true);
       return;
@@ -1045,14 +1045,10 @@ function markAudioInterrupted() {
   releaseScreenWakeLock();
 }
 
-async function recoverAfterReturn() {
+function recoverAfterReturn() {
   if (document.visibilityState === "hidden" || !state.audioRecoveryNeeded) return;
-  try {
-    await recoverAudioSession({ freshContext: true });
-    setStatus("");
-  } catch {
-    setStatus("Ljudet vilar. Tryck en gang till.", true);
-  }
+  setStatus("");
+  updateUi();
 }
 
 document.addEventListener("visibilitychange", () => {
