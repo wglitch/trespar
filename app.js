@@ -6,6 +6,9 @@ const preferredMimes = [
 ];
 const waveformBars = 360;
 const syncStorageKey = "trespar-sync-offset-ms";
+const sketchDbName = "trespar-sketches";
+const sketchStoreName = "active-sketch";
+const activeSketchKey = "current";
 
 const tracksRoot = document.querySelector("#tracks");
 const trackTemplate = document.querySelector("#trackTemplate");
@@ -54,6 +57,8 @@ const state = {
   mixProgressFrame: 0,
   audioRecoveryNeeded: false,
   audioRecoveryPromise: null,
+  sketchDbPromise: null,
+  storagePersistRequested: false,
   tracks: [],
 };
 
@@ -101,6 +106,128 @@ function saveSyncOffset() {
   } catch {
     // Local storage may be blocked.
   }
+}
+
+function openSketchDb() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  if (state.sketchDbPromise) return state.sketchDbPromise;
+
+  state.sketchDbPromise = new Promise((resolve) => {
+    const request = indexedDB.open(sketchDbName, 1);
+    request.addEventListener("upgradeneeded", () => {
+      if (!request.result.objectStoreNames.contains(sketchStoreName)) {
+        request.result.createObjectStore(sketchStoreName);
+      }
+    });
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => resolve(null));
+  });
+
+  return state.sketchDbPromise;
+}
+
+async function withSketchStore(mode, action) {
+  const db = await openSketchDb();
+  if (!db) return null;
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(sketchStoreName, mode);
+    const store = transaction.objectStore(sketchStoreName);
+    let result = null;
+    try {
+      result = action(store);
+    } catch {
+      resolve(null);
+      return;
+    }
+    transaction.addEventListener("complete", () => resolve(result));
+    transaction.addEventListener("error", () => resolve(null));
+    transaction.addEventListener("abort", () => resolve(null));
+  });
+}
+
+async function saveActiveSketch() {
+  requestSketchPersistence();
+  const tracks = state.tracks
+    .filter((track) => track.blob)
+    .map((track) => ({
+      index: track.index,
+      blob: track.blob,
+      duration: track.duration,
+      muted: track.muted,
+      syncOffset: track.syncOffset,
+    }));
+
+  if (!tracks.length) {
+    await clearSavedSketch();
+    return;
+  }
+
+  await withSketchStore("readwrite", (store) => {
+    store.put({
+      savedAt: Date.now(),
+      manualSyncOffset: state.manualSyncOffset,
+      tracks,
+    }, activeSketchKey);
+  });
+}
+
+function requestSketchPersistence() {
+  if (state.storagePersistRequested || !navigator.storage?.persist) return;
+  state.storagePersistRequested = true;
+  navigator.storage.persist().catch(() => {
+    // Browser storage may stay best effort.
+  });
+}
+
+async function loadSavedSketch() {
+  return withSketchStore("readonly", (store) => new Promise((resolve) => {
+    const request = store.get(activeSketchKey);
+    request.addEventListener("success", () => resolve(request.result || null));
+    request.addEventListener("error", () => resolve(null));
+  })).then((result) => result instanceof Promise ? result : result);
+}
+
+async function clearSavedSketch() {
+  await withSketchStore("readwrite", (store) => {
+    store.delete(activeSketchKey);
+  });
+}
+
+async function restoreSavedSketch() {
+  const sketch = await loadSavedSketch();
+  if (!sketch?.tracks?.length || state.tracks.some((track) => track.blob)) return;
+
+  if (typeof sketch.manualSyncOffset === "number") {
+    setManualSyncOffset(sketch.manualSyncOffset, { saveSketch: false });
+  }
+
+  await Promise.all(sketch.tracks.map(async (savedTrack) => {
+    const track = state.tracks[savedTrack.index];
+    if (!track || !savedTrack.blob) return;
+    track.blob = savedTrack.blob;
+    track.url = URL.createObjectURL(savedTrack.blob);
+    track.duration = savedTrack.duration || 0;
+    track.muted = !!savedTrack.muted;
+    track.syncOffset = savedTrack.syncOffset || 0;
+    track.elements.muteButton.setAttribute("aria-pressed", String(track.muted));
+
+    try {
+      const context = state.audioContext || await replaceAndGetDecodeContext();
+      track.buffer = await decodeBlobWithContext(track.blob, context);
+      drawTrackWaveform(track);
+    } catch {
+      track.buffer = null;
+      drawEmptyWaveform(track);
+    }
+  }));
+
+  updateUi();
+}
+
+async function replaceAndGetDecodeContext() {
+  await replaceAudioContext();
+  return state.audioContext;
 }
 
 function formatTime(seconds) {
@@ -471,12 +598,19 @@ async function saveTake(track, blob) {
   if (track.url) URL.revokeObjectURL(track.url);
   track.blob = blob;
   track.url = URL.createObjectURL(blob);
-  track.buffer = await decodeBlob(blob);
   track.duration = duration;
   track.elements.clearButton.disabled = false;
-  drawBufferWaveform(track);
+  await saveActiveSketch();
 
-  setStatus("");
+  try {
+    track.buffer = await decodeBlob(blob);
+    drawBufferWaveform(track);
+    setStatus("");
+  } catch {
+    track.buffer = null;
+    drawEmptyWaveform(track);
+    setStatus("Tagningen sparades lokalt. Tryck igen om ljudet vilar.", true);
+  }
 }
 
 function clearTrack(track) {
@@ -495,6 +629,7 @@ function clearTrack(track) {
 
   setStatus("");
   updateUi();
+  saveActiveSketch();
 }
 
 function toggleMute(track) {
@@ -604,6 +739,7 @@ function stopTransport() {
     drawTrackWaveform(track);
   });
   updateUi();
+  saveActiveSketch();
 }
 
 function animateTransport(duration) {
@@ -989,6 +1125,7 @@ exportButton.addEventListener("click", exportMix);
 resetButton.addEventListener("click", () => {
   stopTransport();
   state.tracks.forEach((track) => clearTrack(track));
+  clearSavedSketch();
   setStatus("");
 });
 saveMixButton.addEventListener("click", () => {
@@ -1022,6 +1159,7 @@ renderTracks();
 syncSlider.value = String(Math.round(state.manualSyncOffset * 1000));
 syncValue.textContent = state.manualSyncOffset ? `+${syncSlider.value} ms` : "auto";
 updateTimingWaves();
+restoreSavedSketch();
 window.addEventListener("resize", () => {
   state.tracks.forEach((track) => {
     if (track.buffer) {
@@ -1093,7 +1231,7 @@ function stopTimingDrag(event) {
 timingWaves.addEventListener("pointerup", stopTimingDrag);
 timingWaves.addEventListener("pointercancel", stopTimingDrag);
 
-function setManualSyncOffset(seconds) {
+function setManualSyncOffset(seconds, { saveSketch = true } = {}) {
   state.manualSyncOffset = Math.max(0, Math.min(0.6, seconds));
   syncSlider.value = String(Math.round(state.manualSyncOffset * 1000 / 10) * 10);
   syncValue.textContent = state.manualSyncOffset ? `+${syncSlider.value} ms` : "auto";
@@ -1102,4 +1240,5 @@ function setManualSyncOffset(seconds) {
   state.tracks.forEach((track) => {
     if (track.buffer) drawBufferWaveform(track);
   });
+  if (saveSketch) saveActiveSketch();
 }
