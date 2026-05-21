@@ -57,9 +57,9 @@ button:disabled {
 
 .topbar {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(44px, 1fr) clamp(82px, 15vw, 104px);
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
 }
@@ -117,15 +117,15 @@ h1 img {
 
 .global-actions {
   display: flex;
-  justify-content: space-between;
-  flex: 1;
+  justify-content: flex-end;
   align-items: center;
-  gap: 10px;
-  margin-left: 10px;
+  justify-self: end;
+  width: clamp(82px, 15vw, 104px);
 }
 
 .wake-button {
-  width: 40px;
+  justify-self: center;
+  width: 58px;
   min-height: 40px;
   border-color: transparent;
   background: transparent;
@@ -637,7 +637,7 @@ h1 img {
   }
 
   .wake-button {
-    width: 38px;
+    width: 54px;
     min-height: 38px;
   }
 
@@ -679,6 +679,10 @@ h1 img {
     width: clamp(86px, 26vw, 104px);
     min-height: clamp(86px, 26vw, 104px);
     margin: -46px -43px -35px 0;
+  }
+
+  .global-actions {
+    width: clamp(86px, 26vw, 104px);
   }
 
 }

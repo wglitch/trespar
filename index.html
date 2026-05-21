@@ -8,16 +8,16 @@
     <link rel="icon" href="trespar-icon.svg" />
     <link rel="apple-touch-icon" href="trespar-icon.svg" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <main class="recorder-shell">
       <header class="topbar">
         <h1><img src="trespar.png" alt="" />Trespår</h1>
+        <button id="wakeButton" class="wake-button icon-button" type="button" aria-label="Väck ljudet" title="Väck ljudet">
+          <img src="wake-ui.png" alt="" aria-hidden="true" />
+        </button>
         <div class="global-actions">
-          <button id="wakeButton" class="wake-button icon-button" type="button" aria-label="Väck ljudet" title="Väck ljudet">
-            <img src="wake-ui.png" alt="" aria-hidden="true" />
-          </button>
           <button id="playButton" class="icon-button" type="button" aria-label="Spela alla spår" title="Spela alla spår" disabled>
             <img src="play-ui.png" alt="" aria-hidden="true" />
             <span class="stop-mark" aria-hidden="true">■</span>
@@ -115,6 +115,6 @@
       </article>
     </template>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>
