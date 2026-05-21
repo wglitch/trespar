@@ -34,6 +34,14 @@
         <div class="timeline" aria-hidden="true">
           <span id="timelineFill"></span>
         </div>
+        <details class="sync-panel">
+          <summary>Synk</summary>
+          <label>
+            Överdubbar tidigare
+            <input id="syncSlider" type="range" min="0" max="600" step="10" value="0" />
+            <output id="syncValue" for="syncSlider">auto</output>
+          </label>
+        </details>
       </section>
 
       <p id="statusText" class="status" role="status">
@@ -51,6 +59,9 @@
             <span class="track-state"></span>
           </div>
           <div class="track-actions">
+            <button class="play-track-button icon-button" type="button" aria-label="Spela spår" title="Spela spår" disabled>
+              <span aria-hidden="true">▶</span>
+            </button>
             <button class="mute-button toggle-button" type="button" aria-pressed="false" disabled>Tyst</button>
             <button class="clear-button ghost-button" type="button" disabled>Radera</button>
           </div>
@@ -65,7 +76,6 @@
             <div class="take-progress"></div>
             <canvas class="waveform" aria-hidden="true"></canvas>
           </div>
-          <audio class="take-audio" controls preload="metadata"></audio>
         </div>
       </article>
     </template>

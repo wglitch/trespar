@@ -167,6 +167,35 @@ h1 {
   background: rgba(245, 242, 233, 0.08);
 }
 
+.sync-panel {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.sync-panel summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.sync-panel label {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 280px) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.sync-panel input {
+  width: 100%;
+  accent-color: var(--gold);
+}
+
+.sync-panel output {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .timeline span,
 .take-progress {
   display: block;
@@ -226,7 +255,7 @@ h1 {
 }
 
 .track-body {
-  grid-template-columns: 138px minmax(0, 1fr);
+  grid-template-columns: 118px minmax(0, 1fr);
   align-items: center;
 }
 
@@ -302,17 +331,6 @@ h1 {
   height: 100%;
 }
 
-.take-audio {
-  grid-column: 2;
-  width: 100%;
-  min-height: 44px;
-  border-radius: 8px;
-}
-
-audio:not([src]) {
-  visibility: hidden;
-}
-
 .track-actions {
   display: flex;
   align-items: center;
@@ -357,6 +375,10 @@ audio:not([src]) {
     justify-content: flex-start;
   }
 
+  .sync-panel label {
+    grid-template-columns: 1fr;
+  }
+
   .record-button {
     min-height: 84px;
     grid-template-columns: 38px auto;
@@ -371,7 +393,4 @@ audio:not([src]) {
     height: 98px;
   }
 
-  .take-audio {
-    grid-column: auto;
-  }
 }

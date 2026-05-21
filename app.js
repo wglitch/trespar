@@ -17,6 +17,8 @@ const clockValue = document.querySelector("#clockValue");
 const lengthValue = document.querySelector("#lengthValue");
 const timelineFill = document.querySelector("#timelineFill");
 const statusText = document.querySelector("#statusText");
+const syncSlider = document.querySelector("#syncSlider");
+const syncValue = document.querySelector("#syncValue");
 
 const state = {
   audioContext: null,
@@ -32,9 +34,11 @@ const state = {
   transportStopTimer: 0,
   transportFrame: 0,
   transportStartedAt: 0,
+  transportTracks: [],
   isPlaying: false,
   exportBusy: false,
   baseDuration: 0,
+  manualSyncOffset: 0,
   tracks: [],
 };
 
@@ -64,7 +68,7 @@ function formatTime(seconds) {
 
 function ensureAudioContext() {
   if (!state.audioContext) {
-    state.audioContext = new AudioContext();
+    state.audioContext = new AudioContext({ latencyHint: "interactive" });
   }
   return state.audioContext.resume().then(() => state.audioContext);
 }
@@ -80,6 +84,7 @@ async function prepareMicrophone() {
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: false,
+      latency: { ideal: 0 },
     },
     video: false,
   });
@@ -109,13 +114,14 @@ function renderTracks() {
     const recordLabel = recordButton.querySelector("b");
     const progress = fragment.querySelector(".take-progress");
     const waveform = fragment.querySelector(".waveform");
-    const audio = fragment.querySelector(".take-audio");
+    const playTrackButton = fragment.querySelector(".play-track-button");
     const muteButton = fragment.querySelector(".mute-button");
     const clearButton = fragment.querySelector(".clear-button");
 
     nameLabel.textContent = name;
     card.dataset.track = index;
     recordButton.addEventListener("click", () => toggleRecording(track));
+    playTrackButton.addEventListener("click", () => playTrack(track));
     muteButton.addEventListener("click", () => toggleMute(track));
     clearButton.addEventListener("click", () => clearTrack(track));
     const track = {
@@ -126,6 +132,7 @@ function renderTracks() {
       url: "",
       muted: false,
       livePeaks: [],
+      syncOffset: 0,
       elements: {
         card,
         nameLabel,
@@ -134,7 +141,7 @@ function renderTracks() {
         recordLabel,
         progress,
         waveform,
-        audio,
+        playTrackButton,
         muteButton,
         clearButton,
       },
@@ -161,7 +168,7 @@ function updateUi() {
   state.tracks.forEach((track) => {
     const readyForOverdub = track.index === 0 || state.baseDuration > 0;
     const busyElsewhere = !!state.activeTrack && state.activeTrack !== track;
-    const { recordButton, recordLabel, trackState, muteButton, clearButton, progress } =
+    const { recordButton, recordLabel, trackState, playTrackButton, muteButton, clearButton, progress } =
       track.elements;
     recordButton.disabled =
       !readyForOverdub ||
@@ -185,8 +192,11 @@ function updateUi() {
           ? "tom"
           : "vantar";
     muteButton.disabled = !track.blob;
+    playTrackButton.disabled = !track.blob || !!state.activeTrack || state.exportBusy;
     clearButton.disabled = !track.blob || !!state.activeTrack;
-    progress.style.width = track.blob ? "100%" : "0";
+    if (!state.isPlaying && state.activeTrack !== track) {
+      progress.style.width = "0";
+    }
   });
 }
 
@@ -223,6 +233,7 @@ async function startRecording(track) {
   track.elements.progress.style.width = "0";
   track.muted = false;
   track.livePeaks = [];
+  track.syncOffset = track.index === 0 ? 0 : getReportedLatency();
   track.elements.muteButton.setAttribute("aria-pressed", "false");
   drawEmptyWaveform(track);
 
@@ -259,7 +270,10 @@ async function startRecording(track) {
   }
 
   await playAll({ excludeTrack: track, forRecording: true });
-  state.recordLimitTimer = window.setTimeout(stopRecording, state.baseDuration * 1000);
+  state.recordLimitTimer = window.setTimeout(
+    stopRecording,
+    (state.baseDuration + getOverdubSyncOffset() + 0.08) * 1000,
+  );
   setStatus(`${track.name} spelar in mot de andra spåren.`);
 }
 
@@ -275,8 +289,6 @@ async function saveTake(track, blob) {
   track.blob = blob;
   track.url = URL.createObjectURL(blob);
   track.buffer = await decodeBlob(blob);
-  track.elements.audio.src = track.url;
-  track.elements.audio.muted = track.muted;
   track.elements.clearButton.disabled = false;
   drawBufferWaveform(track);
 
@@ -295,10 +307,9 @@ function clearTrack(track, announce = true) {
   track.blob = null;
   track.buffer = null;
   track.livePeaks = [];
+  track.syncOffset = 0;
   track.url = "";
   track.muted = false;
-  track.elements.audio.removeAttribute("src");
-  track.elements.audio.load();
   track.elements.muteButton.setAttribute("aria-pressed", "false");
   drawEmptyWaveform(track);
 
@@ -315,14 +326,34 @@ function clearTrack(track, announce = true) {
 
 function toggleMute(track) {
   track.muted = !track.muted;
-  track.elements.audio.muted = track.muted;
   track.elements.muteButton.setAttribute("aria-pressed", String(track.muted));
   updateUi();
 }
 
-async function playAll({ excludeTrack = null, forRecording = false } = {}) {
+function getReportedLatency() {
+  const outputLatency = state.audioContext?.outputLatency || 0;
+  const baseLatency = state.audioContext?.baseLatency || 0;
+  const micLatency = state.micStream?.getAudioTracks()[0]?.getSettings().latency || 0;
+  return Math.max(0, outputLatency + baseLatency + micLatency);
+}
+
+function getOverdubSyncOffset() {
+  return Math.min(0.9, getReportedLatency() + state.manualSyncOffset);
+}
+
+function getTrackOffset(track) {
+  if (track.index === 0 || !track.buffer) return 0;
+  const totalOffset = (track.syncOffset || 0) + state.manualSyncOffset;
+  return Math.min(totalOffset, Math.max(0, track.buffer.duration - 0.02));
+}
+
+async function playTrack(track) {
+  await playAll({ soloTrack: track });
+}
+
+async function playAll({ excludeTrack = null, soloTrack = null, forRecording = false } = {}) {
   const playableTracks = state.tracks.filter((track) => {
-    return track !== excludeTrack && track.buffer && !track.muted;
+    return track !== excludeTrack && track.buffer && !track.muted && (!soloTrack || track === soloTrack);
   });
   if (!playableTracks.length) return;
 
@@ -330,13 +361,19 @@ async function playAll({ excludeTrack = null, forRecording = false } = {}) {
   stopTransport();
   state.isPlaying = true;
   state.transportStartedAt = context.currentTime + 0.04;
+  state.transportTracks = playableTracks;
   state.transportSources = playableTracks.map((track) => {
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = track.buffer;
     gain.gain.value = 1;
     source.connect(gain).connect(context.destination);
-    source.start(state.transportStartedAt, 0, state.baseDuration || track.buffer.duration);
+    const offset = getTrackOffset(track);
+    source.start(
+      state.transportStartedAt,
+      offset,
+      Math.max(0.02, Math.min(state.baseDuration || track.buffer.duration, track.buffer.duration - offset)),
+    );
     return source;
   });
 
@@ -356,6 +393,7 @@ function stopTransport() {
     }
   });
   state.transportSources = [];
+  state.transportTracks = [];
   state.isPlaying = false;
   window.clearTimeout(state.transportStopTimer);
   window.cancelAnimationFrame(state.transportFrame);
@@ -372,9 +410,10 @@ function animateTransport(duration) {
     const bounded = Math.min(duration, elapsed);
     clockValue.textContent = formatTime(bounded);
     timelineFill.style.width = `${Math.min(100, (bounded / duration) * 100)}%`;
-    if (state.activeTrack) {
-      state.activeTrack.elements.progress.style.width = `${Math.min(100, (bounded / duration) * 100)}%`;
-    }
+    state.transportTracks.forEach((track) => {
+      track.elements.progress.style.width = `${Math.min(100, (bounded / duration) * 100)}%`;
+    });
+    if (state.activeTrack) state.activeTrack.elements.progress.style.width = `${Math.min(100, (bounded / duration) * 100)}%`;
     state.transportFrame = window.requestAnimationFrame(tick);
   };
   tick();
@@ -404,7 +443,7 @@ function startLiveWaveform(track) {
     }, 0);
     track.livePeaks.push(Math.max(0.025, peak));
     if (track.livePeaks.length > 720) track.livePeaks.shift();
-    drawPeakWaveform(track, track.livePeaks, "live");
+    drawPeakWaveform(track, normalizePeaks(track.livePeaks), "live");
     state.waveformFrame = window.requestAnimationFrame(tick);
   };
   tick();
@@ -459,7 +498,7 @@ function drawBufferWaveform(track) {
     }
     return Math.max(0.018, peak);
   });
-  drawPeakWaveform(track, peaks, track.index === 0 ? "base" : "take");
+  drawPeakWaveform(track, normalizePeaks(peaks), track.index === 0 ? "base" : "take");
 }
 
 function drawPeakWaveform(track, peaks, tone) {
@@ -491,6 +530,11 @@ function drawPeakWaveform(track, peaks, tone) {
   });
 }
 
+function normalizePeaks(peaks) {
+  const ceiling = Math.max(0.06, ...peaks);
+  return peaks.map((peak) => Math.max(0.03, Math.sqrt(peak / ceiling)));
+}
+
 async function exportMix() {
   const mixTracks = state.tracks.filter((track) => track.buffer && !track.muted);
   if (!mixTracks.length) return;
@@ -519,15 +563,22 @@ async function exportMix() {
       const source = context.createBufferSource();
       source.buffer = track.buffer;
       source.connect(outputGain);
-      return source;
+      return { source, track };
     });
     const duration = state.baseDuration || Math.max(...mixTracks.map((track) => track.buffer.duration));
     const startAt = context.currentTime + 0.08;
     const stopped = new Promise((resolve) => recorder.addEventListener("stop", resolve, { once: true }));
     recorder.start(250);
-    sources.forEach((source) => source.start(startAt, 0, duration));
+    sources.forEach(({ source, track }) => {
+      const offset = getTrackOffset(track);
+      source.start(
+        startAt,
+        offset,
+        Math.max(0.02, Math.min(duration, track.buffer.duration - offset)),
+      );
+    });
     await wait((duration + 0.18) * 1000);
-    sources.forEach((source) => {
+    sources.forEach(({ source }) => {
       try {
         source.stop();
       } catch {
@@ -581,6 +632,10 @@ resetButton.addEventListener("click", () => {
   stopTransport();
   state.tracks.forEach((track) => clearTrack(track, false));
     setStatus("Alla spår är tomma igen.");
+});
+syncSlider.addEventListener("input", () => {
+  state.manualSyncOffset = Number(syncSlider.value) / 1000;
+  syncValue.textContent = state.manualSyncOffset ? `+${syncSlider.value} ms` : "auto";
 });
 
 renderTracks();
