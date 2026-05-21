@@ -10,7 +10,6 @@ const syncStorageKey = "trespar-sync-offset-ms";
 const tracksRoot = document.querySelector("#tracks");
 const trackTemplate = document.querySelector("#trackTemplate");
 const playButton = document.querySelector("#playButton");
-const stopButton = document.querySelector("#stopButton");
 const exportButton = document.querySelector("#exportButton");
 const resetButton = document.querySelector("#resetButton");
 const statusText = document.querySelector("#statusText");
@@ -214,8 +213,11 @@ function renderTracks() {
 
 function updateUi() {
   const hasTake = state.tracks.some((track) => track.blob);
-  playButton.disabled = !hasTake || state.isPlaying || !!state.activeTrack || state.exportBusy;
-  stopButton.disabled = !state.isPlaying && !state.activeTrack;
+  playButton.disabled = (!hasTake && !state.isPlaying) || !!state.activeTrack || state.exportBusy;
+  playButton.classList.toggle("stopping", state.isPlaying);
+  playButton.querySelector("span").textContent = state.isPlaying ? "■" : "▶";
+  playButton.setAttribute("aria-label", state.isPlaying ? "Stoppa" : "Spela alla spår");
+  playButton.title = playButton.getAttribute("aria-label");
   exportButton.disabled = !hasTake || !!state.activeTrack || state.isPlaying || state.exportBusy;
   resetButton.disabled = !hasTake || !!state.activeTrack || state.exportBusy;
   state.tracks.forEach((track) => {
@@ -310,7 +312,7 @@ async function startRecording(track) {
 
   if (track.index === 0) {
     animateRecordClock(track);
-    setStatus("Första inspelningen sätter längden.");
+    setStatus("");
     return;
   }
 
@@ -319,7 +321,7 @@ async function startRecording(track) {
     stopRecording,
     (getIdeaDuration() + getOverdubSyncOffset() + 0.08) * 1000,
   );
-  setStatus("Ny inspelning lägger sig mot de andra.");
+  setStatus("");
 }
 
 function stopRecording() {
@@ -338,10 +340,10 @@ async function saveTake(track, blob) {
   track.elements.clearButton.disabled = false;
   drawBufferWaveform(track);
 
-  setStatus("Inspelningen är klar.");
+  setStatus("");
 }
 
-function clearTrack(track, announce = true) {
+function clearTrack(track) {
   if (state.activeTrack === track) return;
   if (track.url) URL.revokeObjectURL(track.url);
   track.blob = null;
@@ -355,13 +357,22 @@ function clearTrack(track, announce = true) {
   track.elements.muteButton.setAttribute("aria-pressed", "false");
   drawEmptyWaveform(track);
 
-  if (announce) setStatus("Inspelningen raderades.");
+  setStatus("");
   updateUi();
 }
 
 function toggleMute(track) {
   track.muted = !track.muted;
   track.elements.muteButton.setAttribute("aria-pressed", String(track.muted));
+  state.transportSources
+    .filter((transport) => transport.track === track)
+    .forEach((transport) => {
+      transport.gain.gain.setTargetAtTime(
+        track.muted ? 0 : 1,
+        state.audioContext?.currentTime || 0,
+        0.012,
+      );
+    });
   updateUi();
 }
 
@@ -392,7 +403,7 @@ async function playTrack(track) {
 
 async function playAll({ excludeTrack = null, soloTrack = null, forRecording = false } = {}) {
   const playableTracks = state.tracks.filter((track) => {
-    return track !== excludeTrack && track.buffer && !track.muted && (!soloTrack || track === soloTrack);
+    return track !== excludeTrack && track.buffer && (!soloTrack || track === soloTrack);
   });
   if (!playableTracks.length) return;
 
@@ -405,7 +416,7 @@ async function playAll({ excludeTrack = null, soloTrack = null, forRecording = f
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = track.buffer;
-    gain.gain.value = 1;
+    gain.gain.value = track.muted ? 0 : 1;
     source.connect(gain).connect(context.destination);
     const offset = getTrackOffset(track);
     source.start(
@@ -413,18 +424,18 @@ async function playAll({ excludeTrack = null, soloTrack = null, forRecording = f
       offset,
       Math.max(0.02, Math.min(getIdeaDuration() || track.buffer.duration, track.buffer.duration - offset)),
     );
-    return source;
+    return { source, gain, track };
   });
 
   const duration = getIdeaDuration() || Math.max(...playableTracks.map((track) => track.buffer.duration));
   state.transportStopTimer = window.setTimeout(stopTransport, duration * 1000 + 80);
   animateTransport(duration);
-  if (!forRecording) setStatus("Spelar upp alla aktiva spår.");
+  if (!forRecording) setStatus("");
   updateUi();
 }
 
 function stopTransport() {
-  state.transportSources.forEach((source) => {
+  state.transportSources.forEach(({ source }) => {
     try {
       source.stop();
     } catch {
@@ -513,12 +524,7 @@ function drawEmptyWaveform(track) {
   const { width, height, ratio } = resizeCanvas(waveform);
   const middle = height / 2;
   context.clearRect(0, 0, width, height);
-  context.lineWidth = ratio;
-  context.strokeStyle = getTrackColor(track, 0.55);
-  context.beginPath();
-  context.moveTo(0, middle);
-  context.lineTo(width, middle);
-  context.stroke();
+  drawStringLine(context, width, middle, ratio, getTrackColor(track, 0.55));
 }
 
 function getBufferPeaks(track) {
@@ -578,12 +584,7 @@ function drawPeakWaveform(track, peaks, { activeFraction = 1, playFraction = 0 }
   const barWidth = Math.max(1.2 * ratio, width / Math.max(peaks.length, 1) - gap);
 
   context.clearRect(0, 0, width, height);
-  context.strokeStyle = getTrackColor(track, 0.92);
-  context.lineWidth = ratio;
-  context.beginPath();
-  context.moveTo(0, center);
-  context.lineTo(width, center);
-  context.stroke();
+  drawStringLine(context, width, center, ratio, getTrackColor(track, 0.92));
   context.fillStyle = getTrackColor(track, 1);
 
   peaks.forEach((peak, index) => {
@@ -598,11 +599,7 @@ function drawPeakWaveform(track, peaks, { activeFraction = 1, playFraction = 0 }
     const futureX = Math.max(0, Math.min(width, width * activeFraction));
     context.fillStyle = "rgba(9, 12, 17, 0.88)";
     context.fillRect(futureX, 0, width - futureX, height);
-    context.strokeStyle = getTrackColor(track, 0.18);
-    context.beginPath();
-    context.moveTo(futureX, center);
-    context.lineTo(width, center);
-    context.stroke();
+    drawStringLine(context, width - futureX, center, ratio, getTrackColor(track, 0.18), futureX);
   }
 
   if (playFraction > 0 && playFraction < 1) {
@@ -617,6 +614,27 @@ function drawPeakWaveform(track, peaks, { activeFraction = 1, playFraction = 0 }
     context.fillRect(playX - glowWidth, 0, glowWidth * 2, height);
     context.globalCompositeOperation = "source-over";
   }
+}
+
+function drawStringLine(context, width, center, ratio, color, startX = 0) {
+  const endX = startX + width;
+  const segment = Math.max(18 * ratio, width / 20);
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(ratio, 1.15 * ratio);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.beginPath();
+  context.moveTo(startX, center);
+  for (let x = startX + segment; x < endX; x += segment) {
+    const wobble = (
+      Math.sin(x * 0.013) * 0.7 +
+      Math.sin(x * 0.041 + center * 0.09) * 0.46
+    ) * ratio;
+    const controlX = x - segment / 2;
+    context.quadraticCurveTo(controlX, center + wobble, x, center);
+  }
+  context.lineTo(endX, center);
+  context.stroke();
 }
 
 function normalizePeaks(peaks) {
@@ -668,7 +686,7 @@ async function exportMix() {
   try {
     state.exportBusy = true;
     updateUi();
-    setStatus("Gör färdig mixen...");
+    setStatus("");
     await requestScreenWakeLock();
     const context = await ensureAudioContext();
     const destination = context.createMediaStreamDestination();
@@ -719,7 +737,7 @@ async function exportMix() {
     const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
     if (!mixName.value) mixName.value = nextMixName();
     setReadyMix(blob);
-    setStatus("Mixen är klar.");
+    setStatus("");
   } catch (error) {
     setStatus(error.message || "Exporten gick inte att göra.", true);
   } finally {
@@ -794,17 +812,18 @@ function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-playButton.addEventListener("click", () => playAll());
-stopButton.addEventListener("click", () => {
-  stopTransport();
-  stopRecording();
-  setStatus("Stopp.");
+playButton.addEventListener("click", () => {
+  if (state.isPlaying) {
+    stopTransport();
+    return;
+  }
+  playAll();
 });
 exportButton.addEventListener("click", exportMix);
 resetButton.addEventListener("click", () => {
   stopTransport();
-  state.tracks.forEach((track) => clearTrack(track, false));
-    setStatus("");
+  state.tracks.forEach((track) => clearTrack(track));
+  setStatus("");
 });
 saveMixButton.addEventListener("click", () => {
   if (!state.mixBlob) return;

@@ -137,6 +137,11 @@ h1 img {
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
 }
 
+.global-actions #playButton.stopping {
+  border-color: rgba(255, 90, 79, 0.5);
+  color: var(--record);
+}
+
 .icon-button {
   display: grid;
   width: 42px;
@@ -163,14 +168,11 @@ h1 img {
 
 .mute-glyph::after {
   position: absolute;
-  top: 0;
-  right: 1px;
-  width: 2px;
-  height: 18px;
-  background: currentColor;
+  inset: -1px;
+  background:
+    linear-gradient(42deg, transparent 43%, currentColor 44% 56%, transparent 57%),
+    linear-gradient(-42deg, transparent 43%, currentColor 44% 56%, transparent 57%);
   content: "";
-  transform: rotate(42deg);
-  transform-origin: center;
 }
 
 .sync-panel {
@@ -300,12 +302,22 @@ h1 img {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--record);
-  box-shadow: 0 0 0 10px rgba(255, 90, 79, 0.12);
+  background: var(--track);
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--track) 12%, transparent);
+}
+
+.record-button {
+  border-color: color-mix(in srgb, var(--track) 40%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--track) 16%, transparent), color-mix(in srgb, var(--track) 6%, transparent)),
+    var(--panel-strong);
 }
 
 .record-button.recording {
   border-color: rgba(255, 90, 79, 0.76);
+  background:
+    linear-gradient(180deg, rgba(255, 90, 79, 0.2), rgba(255, 90, 79, 0.08)),
+    var(--panel-strong);
 }
 
 .record-button.recording span {
@@ -323,13 +335,15 @@ h1 img {
 }
 
 .record-button.has-take:not(.recording) {
-  border-color: var(--line);
-  background: transparent;
+  border-color: color-mix(in srgb, var(--track) 34%, var(--line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--track) 12%, transparent), transparent),
+    transparent;
 }
 
 .record-button.has-take:not(.recording) span {
-  background: var(--record);
-  box-shadow: none;
+  background: var(--track);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--track) 10%, transparent);
 }
 
 .track-controls .mute-button {
@@ -371,7 +385,31 @@ h1 img {
 }
 
 .finish-actions .command-button {
-  min-width: 150px;
+  min-width: 0;
+}
+
+.finish-icon-button {
+  width: 58px;
+  min-height: 52px;
+  padding: 0;
+}
+
+.finish-icon-button svg {
+  width: 34px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+}
+
+#exportButton {
+  color: var(--play);
+}
+
+#resetButton {
+  color: var(--muted);
 }
 
 .mix-progress {
@@ -513,8 +551,7 @@ h1 img {
   }
 
   .finish-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    flex-wrap: wrap;
   }
 
 }

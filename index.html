@@ -4,19 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Trespår</title>
-    <link rel="icon" href="trespar.png" />
+    <meta name="theme-color" content="#090c11" />
+    <link rel="icon" href="trespar-icon.svg" />
+    <link rel="apple-touch-icon" href="trespar-icon.svg" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="recorder-shell">
       <header class="topbar">
-        <h1><img src="trespar.png" alt="" />Trespår</h1>
+        <h1><img src="trespar-icon.svg" alt="" />Trespår</h1>
         <div class="global-actions">
           <button id="playButton" class="icon-button" type="button" aria-label="Spela alla spår" title="Spela alla spår" disabled>
             <span aria-hidden="true">▶</span>
-          </button>
-          <button id="stopButton" class="icon-button" type="button" aria-label="Stoppa" title="Stoppa" disabled>
-            <span aria-hidden="true">■</span>
           </button>
         </div>
       </header>
@@ -42,8 +42,22 @@
           </label>
         </details>
         <div class="finish-actions">
-          <button id="exportButton" class="command-button" type="button" disabled>Gör färdig mix</button>
-          <button id="resetButton" class="ghost-button" type="button" disabled>Börja om</button>
+          <button id="exportButton" class="finish-icon-button command-button" type="button" aria-label="Gör färdig mix" title="Gör färdig mix" disabled>
+            <svg viewBox="0 0 42 32" aria-hidden="true">
+              <path d="M3 6 H17 L22 12 L29 12 L34 16 H39" />
+              <path d="M3 16 H39" />
+              <path d="M3 26 H17 L22 20 L29 20 L34 16" />
+            </svg>
+            <span class="sr-only">Gör färdig mix</span>
+          </button>
+          <button id="resetButton" class="finish-icon-button ghost-button" type="button" aria-label="Börja om" title="Börja om" disabled>
+            <svg viewBox="0 0 42 32" aria-hidden="true">
+              <path d="M3 6 H39" />
+              <path d="M3 16 H39" />
+              <path d="M3 26 H39" />
+            </svg>
+            <span class="sr-only">Börja om</span>
+          </button>
           <label class="open-mix-button ghost-button">
             Öppna ljudfil
             <input id="openMixInput" type="file" accept="audio/*" />
