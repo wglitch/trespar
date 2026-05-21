@@ -21,6 +21,7 @@ const mixPanel = document.querySelector("#mixPanel");
 const mixName = document.querySelector("#mixName");
 const mixPlayer = document.querySelector("#mixPlayer");
 const saveMixButton = document.querySelector("#saveMixButton");
+const openMixButton = document.querySelector("#openMixButton");
 const openMixInput = document.querySelector("#openMixInput");
 const mixFormat = document.querySelector("#mixFormat");
 const mixProgress = document.querySelector("#mixProgress");
@@ -41,12 +42,14 @@ const state = {
   transportFrame: 0,
   transportStartedAt: 0,
   transportTracks: [],
+  soloTrack: null,
   isPlaying: false,
   exportBusy: false,
   manualSyncOffset: 0,
   mixBlob: null,
   mixUrl: "",
   mixMimeType: "",
+  openedMix: false,
   wakeLock: null,
   mixProgressFrame: 0,
   tracks: [],
@@ -215,9 +218,10 @@ function renderTracks() {
 
 function updateUi() {
   const hasTake = state.tracks.some((track) => track.blob);
-  playButton.disabled = (!hasTake && !state.isPlaying) || !!state.activeTrack || state.exportBusy;
-  playButton.classList.toggle("stopping", state.isPlaying);
-  playButton.setAttribute("aria-label", state.isPlaying ? "Stoppa" : "Spela alla spår");
+  const globalStopping = state.isPlaying || !!state.activeTrack;
+  playButton.disabled = (!hasTake && !globalStopping) || state.exportBusy;
+  playButton.classList.toggle("stopping", globalStopping);
+  playButton.setAttribute("aria-label", globalStopping ? "Stoppa" : "Spela alla spår");
   playButton.title = playButton.getAttribute("aria-label");
   exportButton.disabled = !hasTake || !!state.activeTrack || state.isPlaying || state.exportBusy;
   resetButton.disabled = !hasTake || !!state.activeTrack || state.exportBusy;
@@ -242,6 +246,14 @@ function updateUi() {
     recordButton.setAttribute("aria-label", recordLabel.textContent);
     muteButton.disabled = !track.blob;
     playTrackButton.disabled = !track.blob || !!state.activeTrack || state.exportBusy;
+    playTrackButton.classList.toggle("playing", state.isPlaying && state.soloTrack === track);
+    playTrackButton.querySelector("span").textContent =
+      state.isPlaying && state.soloTrack === track ? "■" : "▶";
+    playTrackButton.setAttribute(
+      "aria-label",
+      state.isPlaying && state.soloTrack === track ? "Stoppa spår" : "Spela spår",
+    );
+    playTrackButton.title = playTrackButton.getAttribute("aria-label");
     clearButton.disabled = !track.blob || !!state.activeTrack;
     if (!state.isPlaying && state.activeTrack !== track) drawTrackWaveform(track);
   });
@@ -399,6 +411,10 @@ function getTrackOffset(track) {
 }
 
 async function playTrack(track) {
+  if (state.isPlaying && state.soloTrack === track) {
+    stopTransport();
+    return;
+  }
   await playAll({ soloTrack: track });
 }
 
@@ -413,6 +429,7 @@ async function playAll({ excludeTrack = null, soloTrack = null, forRecording = f
   state.isPlaying = true;
   state.transportStartedAt = context.currentTime + 0.04;
   state.transportTracks = playableTracks;
+  state.soloTrack = soloTrack;
   state.transportSources = playableTracks.map((track) => {
     const source = context.createBufferSource();
     const gain = context.createGain();
@@ -445,6 +462,7 @@ function stopTransport() {
   });
   state.transportSources = [];
   state.transportTracks = [];
+  state.soloTrack = null;
   state.isPlaying = false;
   window.clearTimeout(state.transportStopTimer);
   window.cancelAnimationFrame(state.transportFrame);
@@ -772,13 +790,15 @@ function stopMixProgress() {
   }, 360);
 }
 
-function setReadyMix(blob) {
+function setReadyMix(blob, { opened = false } = {}) {
   if (state.mixUrl) URL.revokeObjectURL(state.mixUrl);
   state.mixBlob = blob;
   state.mixMimeType = blob.type;
+  state.openedMix = opened;
   state.mixUrl = URL.createObjectURL(blob);
   mixPlayer.src = state.mixUrl;
   mixPanel.hidden = false;
+  openMixButton.classList.toggle("opened", opened);
   mixFormat.textContent = fileExtension(blob.type).toUpperCase();
 }
 
@@ -814,6 +834,10 @@ function wait(ms) {
 }
 
 playButton.addEventListener("click", () => {
+  if (state.activeTrack) {
+    stopRecording();
+    return;
+  }
   if (state.isPlaying) {
     stopTransport();
     return;
@@ -830,12 +854,23 @@ saveMixButton.addEventListener("click", () => {
   if (!state.mixBlob) return;
   downloadBlob(state.mixBlob, `${safeFileName(mixName.value)}.${fileExtension(state.mixMimeType)}`);
 });
+openMixButton.addEventListener("click", () => {
+  if (state.openedMix && !mixPanel.hidden) {
+    mixPlayer.pause();
+    mixPanel.hidden = true;
+    openMixButton.classList.remove("opened");
+    return;
+  }
+  openMixInput.click();
+});
 openMixInput.addEventListener("change", () => {
   const [file] = openMixInput.files;
   if (!file) return;
-  setReadyMix(file);
+  setReadyMix(file, { opened: true });
   mixName.value = file.name.replace(/\.[^.]+$/, "");
   mixFormat.textContent = file.type || "ljudfil";
+  openMixButton.classList.add("opened");
+  openMixInput.value = "";
   setStatus("Ljudfilen är öppen.");
 });
 syncSlider.addEventListener("input", () => {

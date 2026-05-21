@@ -28,7 +28,10 @@
 
       <footer class="finish-line">
         <details class="sync-panel">
-          <summary>Passa ihop nya spår</summary>
+          <summary aria-label="Passa ihop nya spår" title="Passa ihop nya spår">
+            <img src="sync-ui.png" alt="" aria-hidden="true" />
+            <span class="sr-only">Passa ihop nya spår</span>
+          </summary>
           <label class="timing-control">
             <span class="timing-waves" aria-hidden="true">
               <svg viewBox="0 0 180 54">
@@ -51,10 +54,11 @@
             <img src="nollstall-ui.png" alt="" aria-hidden="true" />
             <span class="sr-only">Börja om</span>
           </button>
-          <label class="open-mix-button ghost-button">
-            Öppna ljudfil
-            <input id="openMixInput" type="file" accept="audio/*" />
-          </label>
+          <button id="openMixButton" class="finish-icon-button ghost-button" type="button" aria-label="Öppna ljudfil" title="Öppna ljudfil">
+            <img src="open-ui.png" alt="" aria-hidden="true" />
+            <span class="sr-only">Öppna ljudfil</span>
+          </button>
+          <input id="openMixInput" type="file" accept="audio/*" />
         </div>
         <div id="mixProgress" class="mix-progress" hidden>
           <span id="mixProgressFill"></span>
