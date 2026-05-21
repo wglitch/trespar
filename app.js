@@ -29,6 +29,11 @@ const openMixInput = document.querySelector("#openMixInput");
 const mixFormat = document.querySelector("#mixFormat");
 const mixProgress = document.querySelector("#mixProgress");
 const mixProgressFill = document.querySelector("#mixProgressFill");
+const audioWarning = document.querySelector("#audioWarning");
+const audioWarningText = document.querySelector("#audioWarningText");
+const wakeAudioButton = document.querySelector("#wakeAudioButton");
+const ignoreAudioButton = document.querySelector("#ignoreAudioButton");
+const reloadAudioButton = document.querySelector("#reloadAudioButton");
 
 const state = {
   audioContext: null,
@@ -45,6 +50,10 @@ const state = {
   transportFrame: 0,
   transportStartedAt: 0,
   transportTracks: [],
+  transportAnalyser: null,
+  transportMeterSamples: null,
+  transportSilenceStartedAt: 0,
+  audioWarningIgnored: false,
   soloTrack: null,
   isPlaying: false,
   exportBusy: false,
@@ -210,6 +219,7 @@ async function restoreSavedSketch() {
     track.duration = savedTrack.duration || 0;
     track.muted = !!savedTrack.muted;
     track.syncOffset = savedTrack.syncOffset || 0;
+    track.cachedPeaks = null;
     track.elements.muteButton.setAttribute("aria-pressed", String(track.muted));
 
     try {
@@ -447,6 +457,7 @@ function renderTracks() {
       livePeakCursor: 0,
       syncOffset: 0,
       playFraction: 0,
+      cachedPeaks: null,
       elements: {
         card,
         recordButton,
@@ -599,6 +610,7 @@ async function saveTake(track, blob) {
   track.blob = blob;
   track.url = URL.createObjectURL(blob);
   track.duration = duration;
+  track.cachedPeaks = null;
   track.elements.clearButton.disabled = false;
   await saveActiveSketch();
 
@@ -624,6 +636,7 @@ function clearTrack(track) {
   track.syncOffset = 0;
   track.url = "";
   track.muted = false;
+  track.cachedPeaks = null;
   track.elements.muteButton.setAttribute("aria-pressed", "false");
   drawEmptyWaveform(track);
 
@@ -697,12 +710,19 @@ async function playAll({ excludeTrack = null, soloTrack = null, forRecording = f
   state.transportStartedAt = context.currentTime + 0.04;
   state.transportTracks = playableTracks;
   state.soloTrack = soloTrack;
+  state.audioWarningIgnored = false;
+  hideAudioWarning();
+  const transportBus = context.createGain();
+  state.transportAnalyser = context.createAnalyser();
+  state.transportAnalyser.fftSize = 256;
+  state.transportMeterSamples = new Uint8Array(state.transportAnalyser.fftSize);
+  transportBus.connect(state.transportAnalyser).connect(context.destination);
   state.transportSources = playableTracks.map((track) => {
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = track.buffer;
     gain.gain.value = track.muted ? 0 : 1;
-    source.connect(gain).connect(context.destination);
+    source.connect(gain).connect(transportBus);
     const offset = getTrackOffset(track);
     source.start(
       state.transportStartedAt,
@@ -729,8 +749,17 @@ function stopTransport() {
   });
   state.transportSources = [];
   state.transportTracks = [];
+  try {
+    state.transportAnalyser?.disconnect();
+  } catch {
+    // The transport graph may already be gone.
+  }
+  state.transportAnalyser = null;
+  state.transportMeterSamples = null;
+  state.transportSilenceStartedAt = 0;
   state.soloTrack = null;
   state.isPlaying = false;
+  hideAudioWarning();
   window.clearTimeout(state.transportStopTimer);
   window.cancelAnimationFrame(state.transportFrame);
   state.transportStopTimer = 0;
@@ -756,9 +785,79 @@ function animateTransport(duration) {
       state.activeTrack.playFraction = bounded / duration;
       drawLiveWaveform(state.activeTrack);
     }
+    watchTransportAudio(bounded, duration);
     state.transportFrame = window.requestAnimationFrame(tick);
   };
   tick();
+}
+
+function watchTransportAudio(elapsed, duration) {
+  if (
+    state.activeTrack ||
+    state.audioWarningIgnored ||
+    !state.transportAnalyser ||
+    !state.transportMeterSamples ||
+    elapsed < 0.35 ||
+    elapsed >= duration
+  ) {
+    return;
+  }
+
+  if (state.audioContext?.state && state.audioContext.state !== "running") {
+    showAudioWarning();
+    return;
+  }
+
+  const shouldSound = state.transportTracks.some((track) => {
+    return !track.muted && trackHasSignalNear(track, elapsed, duration);
+  });
+  const hasOutputSignal = readTransportPeak() > 0.018;
+
+  if (!shouldSound || hasOutputSignal) {
+    state.transportSilenceStartedAt = 0;
+    return;
+  }
+
+  if (!state.transportSilenceStartedAt) {
+    state.transportSilenceStartedAt = performance.now();
+    return;
+  }
+
+  if (performance.now() - state.transportSilenceStartedAt > 900) {
+    showAudioWarning();
+  }
+}
+
+function readTransportPeak() {
+  state.transportAnalyser.getByteTimeDomainData(state.transportMeterSamples);
+  return state.transportMeterSamples.reduce((peak, sample) => {
+    return Math.max(peak, Math.abs(sample - 128) / 128);
+  }, 0);
+}
+
+function trackHasSignalNear(track, elapsed, duration) {
+  const peaks = track.cachedPeaks || getBufferPeaks(track);
+  if (!peaks.length) return false;
+  const center = Math.min(peaks.length - 1, Math.floor((elapsed / Math.max(0.05, duration)) * peaks.length));
+  const start = Math.max(0, center - 4);
+  const end = Math.min(peaks.length, center + 5);
+  return peaks.slice(start, end).some((peak) => peak > 0.09);
+}
+
+function showAudioWarning(reloadStep = false) {
+  if (state.audioWarningIgnored) return;
+  audioWarning.hidden = false;
+  audioWarningText.textContent = reloadStep
+    ? "Ljudet vaknade inte. Allt ar sparat."
+    : "Ljudet verkar ha somnat.";
+  wakeAudioButton.hidden = reloadStep;
+  reloadAudioButton.hidden = !reloadStep;
+}
+
+function hideAudioWarning({ ignore = false } = {}) {
+  audioWarning.hidden = true;
+  state.transportSilenceStartedAt = 0;
+  if (ignore) state.audioWarningIgnored = true;
 }
 
 function animateRecordClock(track) {
@@ -840,7 +939,8 @@ function getBufferPeaks(track) {
     return peak;
   });
   while (peaks.length < barCount) peaks.push(0);
-  return normalizePeaks(peaks);
+  track.cachedPeaks = normalizePeaks(peaks);
+  return track.cachedPeaks;
 }
 
 function drawTrackWaveform(track) {
@@ -1150,6 +1250,21 @@ openMixInput.addEventListener("change", () => {
   openMixButton.classList.add("opened");
   openMixInput.value = "";
   setStatus("Ljudfilen är öppen.");
+});
+wakeAudioButton.addEventListener("click", async () => {
+  try {
+    await recoverAudioSession({ freshContext: true });
+    hideAudioWarning();
+    setStatus("");
+  } catch {
+    showAudioWarning(true);
+  }
+});
+ignoreAudioButton.addEventListener("click", () => {
+  hideAudioWarning({ ignore: true });
+});
+reloadAudioButton.addEventListener("click", () => {
+  window.location.reload();
 });
 syncSlider.addEventListener("input", () => {
   setManualSyncOffset(Number(syncSlider.value) / 1000);

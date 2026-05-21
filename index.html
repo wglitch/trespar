@@ -23,6 +23,14 @@
       </header>
 
       <p id="statusText" class="status" role="status"></p>
+      <aside id="audioWarning" class="audio-warning" hidden>
+        <p id="audioWarningText">Ljudet verkar ha somnat.</p>
+        <div class="audio-warning-actions">
+          <button id="wakeAudioButton" class="command-button" type="button">Väck ljudet</button>
+          <button id="ignoreAudioButton" class="ghost-button" type="button">Ignorera</button>
+          <button id="reloadAudioButton" class="command-button" type="button" hidden>Ladda om</button>
+        </div>
+      </aside>
 
       <section id="tracks" class="tracks" aria-label="Spår"></section>
 
