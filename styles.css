@@ -374,6 +374,24 @@ h1 img {
   min-width: 150px;
 }
 
+.mix-progress {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(245, 242, 233, 0.09);
+}
+
+.mix-progress[hidden] {
+  display: none;
+}
+
+.mix-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--play), var(--gold), var(--record));
+}
+
 .mix-panel {
   display: grid;
   gap: 10px;

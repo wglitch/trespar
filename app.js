@@ -24,6 +24,8 @@ const mixPlayer = document.querySelector("#mixPlayer");
 const saveMixButton = document.querySelector("#saveMixButton");
 const openMixInput = document.querySelector("#openMixInput");
 const mixFormat = document.querySelector("#mixFormat");
+const mixProgress = document.querySelector("#mixProgress");
+const mixProgressFill = document.querySelector("#mixProgressFill");
 
 const state = {
   audioContext: null,
@@ -42,11 +44,12 @@ const state = {
   transportTracks: [],
   isPlaying: false,
   exportBusy: false,
-  baseDuration: 0,
   manualSyncOffset: 0,
   mixBlob: null,
   mixUrl: "",
   mixMimeType: "",
+  wakeLock: null,
+  mixProgressFrame: 0,
   tracks: [],
 };
 
@@ -140,6 +143,29 @@ async function decodeBlob(blob) {
   return context.decodeAudioData(await blob.arrayBuffer());
 }
 
+async function requestScreenWakeLock() {
+  if (!navigator.wakeLock?.request || state.wakeLock) return;
+  try {
+    state.wakeLock = await navigator.wakeLock.request("screen");
+    state.wakeLock.addEventListener("release", () => {
+      state.wakeLock = null;
+    });
+  } catch {
+    state.wakeLock = null;
+  }
+}
+
+async function releaseScreenWakeLock() {
+  if (!state.wakeLock) return;
+  const lock = state.wakeLock;
+  state.wakeLock = null;
+  try {
+    await lock.release();
+  } catch {
+    // Wake lock may already be released by the browser.
+  }
+}
+
 function renderTracks() {
   state.tracks = Array.from({ length: 3 }, (_, index) => {
     const fragment = trackTemplate.content.cloneNode(true);
@@ -160,6 +186,7 @@ function renderTracks() {
       index,
       blob: null,
       buffer: null,
+      duration: 0,
       url: "",
       muted: false,
       livePeaks: [],
@@ -192,7 +219,7 @@ function updateUi() {
   exportButton.disabled = !hasTake || !!state.activeTrack || state.isPlaying || state.exportBusy;
   resetButton.disabled = !hasTake || !!state.activeTrack || state.exportBusy;
   state.tracks.forEach((track) => {
-    const readyForOverdub = track.index === 0 || state.baseDuration > 0;
+    const readyForOverdub = track.index === 0 || getIdeaDuration() > 0;
     const busyElsewhere = !!state.activeTrack && state.activeTrack !== track;
     const { recordButton, recordLabel, playTrackButton, muteButton, clearButton } =
       track.elements;
@@ -233,9 +260,10 @@ async function toggleRecording(track) {
 async function startRecording(track) {
   await prepareMicrophone();
   await ensureAudioContext();
+  await requestScreenWakeLock();
   stopTransport();
 
-  if (track.index > 0 && !state.baseDuration) {
+  if (track.index > 0 && !getIdeaDuration()) {
     setStatus("Spela in spår ett först.");
     return;
   }
@@ -271,6 +299,7 @@ async function startRecording(track) {
       state.recordLimitTimer = 0;
       stopLiveWaveform();
       stopTransport();
+      releaseScreenWakeLock();
       updateUi();
     }
   });
@@ -288,7 +317,7 @@ async function startRecording(track) {
   await playAll({ excludeTrack: track, forRecording: true });
   state.recordLimitTimer = window.setTimeout(
     stopRecording,
-    (state.baseDuration + getOverdubSyncOffset() + 0.08) * 1000,
+    (getIdeaDuration() + getOverdubSyncOffset() + 0.08) * 1000,
   );
   setStatus("Ny inspelning lägger sig mot de andra.");
 }
@@ -305,13 +334,9 @@ async function saveTake(track, blob) {
   track.blob = blob;
   track.url = URL.createObjectURL(blob);
   track.buffer = await decodeBlob(blob);
+  track.duration = duration;
   track.elements.clearButton.disabled = false;
   drawBufferWaveform(track);
-
-  if (track.index === 0) {
-    state.baseDuration = duration;
-    state.tracks.slice(1).forEach((overdub) => clearTrack(overdub, false));
-  }
 
   setStatus("Inspelningen är klar.");
 }
@@ -321,6 +346,7 @@ function clearTrack(track, announce = true) {
   if (track.url) URL.revokeObjectURL(track.url);
   track.blob = null;
   track.buffer = null;
+  track.duration = 0;
   track.livePeaks = [];
   track.livePeakCursor = 0;
   track.syncOffset = 0;
@@ -328,11 +354,6 @@ function clearTrack(track, announce = true) {
   track.muted = false;
   track.elements.muteButton.setAttribute("aria-pressed", "false");
   drawEmptyWaveform(track);
-
-  if (track.index === 0) {
-    state.baseDuration = 0;
-    state.tracks.slice(1).forEach((overdub) => clearTrack(overdub, false));
-  }
 
   if (announce) setStatus("Inspelningen raderades.");
   updateUi();
@@ -349,6 +370,10 @@ function getReportedLatency() {
   const baseLatency = state.audioContext?.baseLatency || 0;
   const micLatency = state.micStream?.getAudioTracks()[0]?.getSettings().latency || 0;
   return Math.max(0, outputLatency + baseLatency + micLatency);
+}
+
+function getIdeaDuration() {
+  return Math.max(0, ...state.tracks.map((track) => track.duration || 0));
 }
 
 function getOverdubSyncOffset() {
@@ -386,12 +411,12 @@ async function playAll({ excludeTrack = null, soloTrack = null, forRecording = f
     source.start(
       state.transportStartedAt,
       offset,
-      Math.max(0.02, Math.min(state.baseDuration || track.buffer.duration, track.buffer.duration - offset)),
+      Math.max(0.02, Math.min(getIdeaDuration() || track.buffer.duration, track.buffer.duration - offset)),
     );
     return source;
   });
 
-  const duration = state.baseDuration || Math.max(...playableTracks.map((track) => track.buffer.duration));
+  const duration = getIdeaDuration() || Math.max(...playableTracks.map((track) => track.buffer.duration));
   state.transportStopTimer = window.setTimeout(stopTransport, duration * 1000 + 80);
   animateTransport(duration);
   if (!forRecording) setStatus("Spelar upp alla aktiva spår.");
@@ -442,7 +467,7 @@ function animateRecordClock(track) {
   const tick = () => {
     if (state.activeTrack !== track) return;
     const elapsed = (performance.now() - state.recordStartedAt) / 1000;
-    track.playFraction = state.baseDuration ? elapsed / state.baseDuration : 1;
+    track.playFraction = getIdeaDuration() ? elapsed / getIdeaDuration() : 1;
     drawLiveWaveform(track);
     state.transportFrame = window.requestAnimationFrame(tick);
   };
@@ -503,12 +528,13 @@ function getBufferPeaks(track) {
 
   const channel = track.buffer.getChannelData(0);
   const firstSample = Math.floor(getTrackOffset(track) * track.buffer.sampleRate);
-  const visibleSamples = state.baseDuration
-    ? Math.min(channel.length - firstSample, Math.floor(state.baseDuration * track.buffer.sampleRate))
+  const ideaDuration = getIdeaDuration();
+  const visibleSamples = ideaDuration
+    ? Math.min(channel.length - firstSample, Math.floor(ideaDuration * track.buffer.sampleRate))
     : channel.length - firstSample;
   const barCount = waveformBars;
-  const naturalBars = state.baseDuration && track.index > 0
-    ? Math.max(1, Math.min(barCount, Math.round((visibleSamples / track.buffer.sampleRate / state.baseDuration) * barCount)))
+  const naturalBars = ideaDuration
+    ? Math.max(1, Math.min(barCount, Math.round((visibleSamples / track.buffer.sampleRate / ideaDuration) * barCount)))
     : barCount;
   const sampleWindow = Math.max(1, Math.floor(visibleSamples / naturalBars));
   const peaks = Array.from({ length: naturalBars }, (_, index) => {
@@ -603,10 +629,11 @@ function normalizePeaks(peaks) {
 }
 
 function captureLivePeak(track, peak) {
-  if (track.index > 0 && state.baseDuration) {
+  const ideaDuration = getIdeaDuration();
+  if (track.index > 0 && ideaDuration) {
     if (!track.livePeaks.length) track.livePeaks = Array(waveformBars).fill(0);
     const elapsed = (performance.now() - state.recordStartedAt) / 1000;
-    const index = Math.min(waveformBars - 1, Math.floor((elapsed / state.baseDuration) * waveformBars));
+    const index = Math.min(waveformBars - 1, Math.floor((elapsed / ideaDuration) * waveformBars));
     track.livePeaks[index] = Math.max(track.livePeaks[index], peak);
     track.livePeakCursor = Math.max(track.livePeakCursor, index + 1);
     return;
@@ -618,7 +645,7 @@ function captureLivePeak(track, peak) {
 }
 
 function getLiveFraction(track) {
-  if (track.index > 0 && state.baseDuration) {
+  if (track.index > 0 && getIdeaDuration()) {
     return Math.min(1, track.livePeakCursor / waveformBars);
   }
   return 1;
@@ -642,6 +669,7 @@ async function exportMix() {
     state.exportBusy = true;
     updateUi();
     setStatus("Gör färdig mixen...");
+    await requestScreenWakeLock();
     const context = await ensureAudioContext();
     const destination = context.createMediaStreamDestination();
     const outputGain = context.createGain();
@@ -663,7 +691,7 @@ async function exportMix() {
       source.connect(outputGain);
       return { source, track };
     });
-    const duration = state.baseDuration || Math.max(...mixTracks.map((track) => track.buffer.duration));
+    const duration = getIdeaDuration() || Math.max(...mixTracks.map((track) => track.buffer.duration));
     const startAt = context.currentTime + 0.08;
     const stopped = new Promise((resolve) => recorder.addEventListener("stop", resolve, { once: true }));
     recorder.start(250);
@@ -675,6 +703,7 @@ async function exportMix() {
         Math.max(0.02, Math.min(duration, track.buffer.duration - offset)),
       );
     });
+    startMixProgress(duration);
     await wait((duration + 0.18) * 1000);
     sources.forEach(({ source }) => {
       try {
@@ -694,9 +723,34 @@ async function exportMix() {
   } catch (error) {
     setStatus(error.message || "Exporten gick inte att göra.", true);
   } finally {
+    stopMixProgress();
+    releaseScreenWakeLock();
     state.exportBusy = false;
     updateUi();
   }
+}
+
+function startMixProgress(duration) {
+  mixProgress.hidden = false;
+  mixProgressFill.style.width = "0";
+  const startedAt = performance.now();
+  const tick = () => {
+    const elapsed = (performance.now() - startedAt) / 1000;
+    mixProgressFill.style.width = `${Math.min(100, (elapsed / Math.max(0.05, duration)) * 100)}%`;
+    if (state.exportBusy && elapsed < duration) {
+      state.mixProgressFrame = window.requestAnimationFrame(tick);
+    }
+  };
+  tick();
+}
+
+function stopMixProgress() {
+  window.cancelAnimationFrame(state.mixProgressFrame);
+  state.mixProgressFrame = 0;
+  mixProgressFill.style.width = "100%";
+  window.setTimeout(() => {
+    if (!state.exportBusy) mixProgress.hidden = true;
+  }, 360);
 }
 
 function setReadyMix(blob) {
