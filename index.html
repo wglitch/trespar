@@ -4,12 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Trespår</title>
+    <link rel="icon" href="trespar.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="recorder-shell">
       <header class="topbar">
-        <h1>Trespår</h1>
+        <h1><img src="trespar.png" alt="" />Trespår</h1>
         <button id="armMicButton" class="permission-button" type="button">
           <span aria-hidden="true"></span>
           Mikrofon
@@ -28,12 +29,19 @@
           <button id="stopButton" class="icon-button" type="button" aria-label="Stoppa" title="Stoppa" disabled>
             <span aria-hidden="true">■</span>
           </button>
-          <button id="exportButton" class="command-button" type="button" disabled>Exportera</button>
-          <button id="resetButton" class="ghost-button" type="button" disabled>Nollställ</button>
         </div>
         <div class="timeline" aria-hidden="true">
           <span id="timelineFill"></span>
         </div>
+      </section>
+
+      <p id="statusText" class="status" role="status">
+        Spela in spår ett.
+      </p>
+
+      <section id="tracks" class="tracks" aria-label="Spår"></section>
+
+      <footer class="finish-line">
         <details class="sync-panel">
           <summary>Synk</summary>
           <label>
@@ -42,13 +50,11 @@
             <output id="syncValue" for="syncSlider">auto</output>
           </label>
         </details>
-      </section>
-
-      <p id="statusText" class="status" role="status">
-        Spela in spår ett.
-      </p>
-
-      <section id="tracks" class="tracks" aria-label="Spår"></section>
+        <div class="finish-actions">
+          <button id="exportButton" class="command-button" type="button" disabled>Exportera</button>
+          <button id="resetButton" class="ghost-button" type="button" disabled>Nollställ</button>
+        </div>
+      </footer>
     </main>
 
     <template id="trackTemplate">
@@ -59,19 +65,21 @@
             <span class="track-state"></span>
           </div>
           <div class="track-actions">
-            <button class="play-track-button icon-button" type="button" aria-label="Spela spår" title="Spela spår" disabled>
-              <span aria-hidden="true">▶</span>
-            </button>
-            <button class="mute-button toggle-button" type="button" aria-pressed="false" disabled>Tyst</button>
             <button class="clear-button ghost-button" type="button" disabled>Radera</button>
           </div>
         </header>
 
         <div class="track-body">
-          <button class="record-button" type="button">
-            <span aria-hidden="true"></span>
-            <b>Spela in</b>
-          </button>
+          <div class="track-controls">
+            <button class="record-button" type="button" aria-label="Spela in">
+              <span aria-hidden="true"></span>
+              <b class="sr-only">Spela in</b>
+            </button>
+            <button class="play-track-button icon-button" type="button" aria-label="Spela spår" title="Spela spår" disabled>
+              <span aria-hidden="true">▶</span>
+            </button>
+            <button class="mute-button icon-button toggle-button" type="button" aria-label="Tysta spår" title="Tysta spår" aria-pressed="false" disabled>M</button>
+          </div>
           <div class="take-window">
             <div class="take-progress"></div>
             <canvas class="waveform" aria-hidden="true"></canvas>

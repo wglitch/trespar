@@ -5,6 +5,8 @@ const preferredMimes = [
   "audio/webm",
   "audio/mp4",
 ];
+const waveformBars = 360;
+const syncStorageKey = "trespar-sync-offset-ms";
 
 const tracksRoot = document.querySelector("#tracks");
 const trackTemplate = document.querySelector("#trackTemplate");
@@ -42,6 +44,8 @@ const state = {
   tracks: [],
 };
 
+state.manualSyncOffset = loadSavedSyncOffset();
+
 function chooseMimeType() {
   if (!window.MediaRecorder) return "";
   return preferredMimes.find((mime) => MediaRecorder.isTypeSupported(mime)) || "";
@@ -56,6 +60,22 @@ function fileExtension(mimeType) {
 function setStatus(message, isError = false) {
   statusText.textContent = message;
   statusText.classList.toggle("error", isError);
+}
+
+function loadSavedSyncOffset() {
+  try {
+    return Math.max(0, Math.min(0.6, Number(localStorage.getItem(syncStorageKey)) / 1000 || 0));
+  } catch {
+    return 0;
+  }
+}
+
+function saveSyncOffset() {
+  try {
+    localStorage.setItem(syncStorageKey, String(Math.round(state.manualSyncOffset * 1000)));
+  } catch {
+    // Local storage may be blocked.
+  }
 }
 
 function formatTime(seconds) {
@@ -132,6 +152,7 @@ function renderTracks() {
       url: "",
       muted: false,
       livePeaks: [],
+      livePeakCursor: 0,
       syncOffset: 0,
       elements: {
         card,
@@ -182,6 +203,7 @@ function updateUi() {
       : track.blob
         ? "Ta om"
         : "Spela in";
+    recordButton.setAttribute("aria-label", recordLabel.textContent);
     trackState.textContent = state.activeTrack === track
       ? "spelar in"
       : track.blob
@@ -195,7 +217,7 @@ function updateUi() {
     playTrackButton.disabled = !track.blob || !!state.activeTrack || state.exportBusy;
     clearButton.disabled = !track.blob || !!state.activeTrack;
     if (!state.isPlaying && state.activeTrack !== track) {
-      progress.style.width = "0";
+      setPlayhead(track, 0);
     }
   });
 }
@@ -233,6 +255,7 @@ async function startRecording(track) {
   track.elements.progress.style.width = "0";
   track.muted = false;
   track.livePeaks = [];
+  track.livePeakCursor = 0;
   track.syncOffset = track.index === 0 ? 0 : getReportedLatency();
   track.elements.muteButton.setAttribute("aria-pressed", "false");
   drawEmptyWaveform(track);
@@ -307,6 +330,7 @@ function clearTrack(track, announce = true) {
   track.blob = null;
   track.buffer = null;
   track.livePeaks = [];
+  track.livePeakCursor = 0;
   track.syncOffset = 0;
   track.url = "";
   track.muted = false;
@@ -411,9 +435,9 @@ function animateTransport(duration) {
     clockValue.textContent = formatTime(bounded);
     timelineFill.style.width = `${Math.min(100, (bounded / duration) * 100)}%`;
     state.transportTracks.forEach((track) => {
-      track.elements.progress.style.width = `${Math.min(100, (bounded / duration) * 100)}%`;
+      setPlayhead(track, bounded / duration);
     });
-    if (state.activeTrack) state.activeTrack.elements.progress.style.width = `${Math.min(100, (bounded / duration) * 100)}%`;
+    if (state.activeTrack) setPlayhead(state.activeTrack, bounded / duration);
     state.transportFrame = window.requestAnimationFrame(tick);
   };
   tick();
@@ -424,9 +448,7 @@ function animateRecordClock(track) {
     if (state.activeTrack !== track) return;
     const elapsed = (performance.now() - state.recordStartedAt) / 1000;
     clockValue.textContent = formatTime(elapsed);
-    track.elements.progress.style.width = state.baseDuration
-      ? `${Math.min(100, (elapsed / state.baseDuration) * 100)}%`
-      : "100%";
+    setPlayhead(track, state.baseDuration ? elapsed / state.baseDuration : 1);
     state.transportFrame = window.requestAnimationFrame(tick);
   };
   tick();
@@ -441,9 +463,8 @@ function startLiveWaveform(track) {
     const peak = samples.reduce((highest, sample) => {
       return Math.max(highest, Math.abs(sample - 128) / 128);
     }, 0);
-    track.livePeaks.push(Math.max(0.025, peak));
-    if (track.livePeaks.length > 720) track.livePeaks.shift();
-    drawPeakWaveform(track, normalizePeaks(track.livePeaks), "live");
+    captureLivePeak(track, peak);
+    drawLiveWaveform(track);
     state.waveformFrame = window.requestAnimationFrame(tick);
   };
   tick();
@@ -473,7 +494,7 @@ function drawEmptyWaveform(track) {
   const middle = height / 2;
   context.clearRect(0, 0, width, height);
   context.lineWidth = ratio;
-  context.strokeStyle = "rgba(245, 242, 233, 0.16)";
+  context.strokeStyle = getTrackColor(track, 0.55);
   context.beginPath();
   context.moveTo(0, middle);
   context.lineTo(width, middle);
@@ -487,52 +508,111 @@ function drawBufferWaveform(track) {
   }
 
   const channel = track.buffer.getChannelData(0);
-  const barCount = 360;
-  const sampleWindow = Math.max(1, Math.floor(channel.length / barCount));
+  const firstSample = Math.floor(getTrackOffset(track) * track.buffer.sampleRate);
+  const visibleSamples = state.baseDuration
+    ? Math.min(channel.length - firstSample, Math.floor(state.baseDuration * track.buffer.sampleRate))
+    : channel.length - firstSample;
+  const barCount = waveformBars;
+  const sampleWindow = Math.max(1, Math.floor(visibleSamples / barCount));
   const peaks = Array.from({ length: barCount }, (_, index) => {
     let peak = 0;
-    const start = index * sampleWindow;
+    const start = firstSample + index * sampleWindow;
     const end = Math.min(channel.length, start + sampleWindow);
     for (let sample = start; sample < end; sample += 1) {
       peak = Math.max(peak, Math.abs(channel[sample]));
     }
-    return Math.max(0.018, peak);
+    return peak;
   });
-  drawPeakWaveform(track, normalizePeaks(peaks), track.index === 0 ? "base" : "take");
+  drawPeakWaveform(track, normalizePeaks(peaks));
 }
 
-function drawPeakWaveform(track, peaks, tone) {
+function drawLiveWaveform(track) {
+  drawPeakWaveform(track, normalizePeaks(track.livePeaks), {
+    activeFraction: getLiveFraction(track),
+  });
+}
+
+function drawPeakWaveform(track, peaks, { activeFraction = 1 } = {}) {
   const { waveform } = track.elements;
   const context = waveform.getContext("2d");
   const { width, height, ratio } = resizeCanvas(waveform);
   const center = height / 2;
   const gap = Math.max(1.5 * ratio, width / Math.max(peaks.length, 1) * 0.18);
   const barWidth = Math.max(1.2 * ratio, width / Math.max(peaks.length, 1) - gap);
-  const colors = {
-    base: "#55d5a4",
-    live: "#ff796d",
-    take: "#6db8ff",
-  };
 
   context.clearRect(0, 0, width, height);
-  context.strokeStyle = "rgba(245, 242, 233, 0.08)";
+  context.strokeStyle = getTrackColor(track, 0.92);
   context.lineWidth = ratio;
   context.beginPath();
   context.moveTo(0, center);
   context.lineTo(width, center);
   context.stroke();
-  context.fillStyle = colors[tone];
+  context.fillStyle = getTrackColor(track, 1);
 
   peaks.forEach((peak, index) => {
     const x = index * (width / Math.max(peaks.length, 1));
-    const amplitude = Math.max(3 * ratio, peak * height * 0.44);
-    context.fillRect(x, center - amplitude, barWidth, amplitude * 2);
+    const amplitude = peak * height * 0.43;
+    if (amplitude > 1.4 * ratio) {
+      context.fillRect(x, center - amplitude, barWidth, amplitude * 2);
+    }
   });
+
+  if (activeFraction < 1) {
+    const futureX = Math.max(0, Math.min(width, width * activeFraction));
+    context.fillStyle = "rgba(9, 12, 17, 0.88)";
+    context.fillRect(futureX, 0, width - futureX, height);
+    context.strokeStyle = getTrackColor(track, 0.18);
+    context.beginPath();
+    context.moveTo(futureX, center);
+    context.lineTo(width, center);
+    context.stroke();
+  }
 }
 
 function normalizePeaks(peaks) {
-  const ceiling = Math.max(0.06, ...peaks);
-  return peaks.map((peak) => Math.max(0.03, Math.sqrt(peak / ceiling)));
+  const audiblePeaks = peaks.filter((peak) => peak > 0.025);
+  const ceiling = Math.max(0.08, ...audiblePeaks);
+  return peaks.map((peak) => {
+    if (peak <= 0.025) return 0;
+    return Math.sqrt((peak - 0.025) / Math.max(0.001, ceiling - 0.025));
+  });
+}
+
+function captureLivePeak(track, peak) {
+  if (track.index > 0 && state.baseDuration) {
+    if (!track.livePeaks.length) track.livePeaks = Array(waveformBars).fill(0);
+    const elapsed = (performance.now() - state.recordStartedAt) / 1000;
+    const index = Math.min(waveformBars - 1, Math.floor((elapsed / state.baseDuration) * waveformBars));
+    track.livePeaks[index] = Math.max(track.livePeaks[index], peak);
+    track.livePeakCursor = Math.max(track.livePeakCursor, index + 1);
+    return;
+  }
+
+  track.livePeaks.push(peak);
+  if (track.livePeaks.length > waveformBars) track.livePeaks.shift();
+  track.livePeakCursor = track.livePeaks.length;
+}
+
+function getLiveFraction(track) {
+  if (track.index > 0 && state.baseDuration) {
+    return Math.min(1, track.livePeakCursor / waveformBars);
+  }
+  return 1;
+}
+
+function setPlayhead(track, fraction) {
+  const bounded = Math.max(0, Math.min(1, fraction || 0));
+  track.elements.progress.style.left = `${bounded * 100}%`;
+}
+
+function getTrackColor(track, alpha) {
+  const colors = [
+    [88, 211, 194],
+    [255, 193, 73],
+    [255, 88, 95],
+  ];
+  const [red, green, blue] = colors[track.index] || colors[0];
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 async function exportMix() {
@@ -636,15 +716,21 @@ resetButton.addEventListener("click", () => {
 syncSlider.addEventListener("input", () => {
   state.manualSyncOffset = Number(syncSlider.value) / 1000;
   syncValue.textContent = state.manualSyncOffset ? `+${syncSlider.value} ms` : "auto";
+  saveSyncOffset();
+  state.tracks.forEach((track) => {
+    if (track.buffer) drawBufferWaveform(track);
+  });
 });
 
 renderTracks();
+syncSlider.value = String(Math.round(state.manualSyncOffset * 1000));
+syncValue.textContent = state.manualSyncOffset ? `+${syncSlider.value} ms` : "auto";
 window.addEventListener("resize", () => {
   state.tracks.forEach((track) => {
     if (track.buffer) {
       drawBufferWaveform(track);
     } else if (state.activeTrack === track && track.livePeaks.length) {
-      drawPeakWaveform(track, track.livePeaks, "live");
+      drawLiveWaveform(track);
     } else {
       drawEmptyWaveform(track);
     }

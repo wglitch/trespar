@@ -53,7 +53,7 @@ button:disabled {
 
 .topbar,
 .transport,
-.track-card {
+.finish-line {
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -68,10 +68,19 @@ button:disabled {
 }
 
 h1 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin: 0;
   font-size: 1.35rem;
   line-height: 1;
   letter-spacing: 0;
+}
+
+h1 img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
 }
 
 .permission-button,
@@ -168,7 +177,6 @@ h1 {
 }
 
 .sync-panel {
-  grid-column: 1 / -1;
   color: var(--muted);
   font-size: 0.88rem;
 }
@@ -216,14 +224,26 @@ h1 {
 
 .tracks {
   display: grid;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .track-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.track-card[data-track="0"] {
+  --track: #58d3c2;
+}
+
+.track-card[data-track="1"] {
+  --track: #ffc149;
+}
+
+.track-card[data-track="2"] {
+  --track: #ff585f;
 }
 
 .track-head,
@@ -235,6 +255,7 @@ h1 {
 .track-head {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  padding: 0 2px;
 }
 
 .track-title {
@@ -255,15 +276,23 @@ h1 {
 }
 
 .track-body {
-  grid-template-columns: 118px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
+  gap: 12px;
+}
+
+.track-controls {
+  display: grid;
+  grid-template-columns: repeat(3, 42px);
+  gap: 7px;
 }
 
 .record-button {
   display: grid;
-  min-height: 112px;
+  width: 42px;
+  min-height: 42px;
   place-items: center;
-  gap: 7px;
+  padding: 0;
   border: 1px solid rgba(255, 90, 79, 0.36);
   border-radius: 8px;
   background:
@@ -273,8 +302,8 @@ h1 {
 }
 
 .record-button span {
-  width: 44px;
-  height: 44px;
+  width: 19px;
+  height: 19px;
   border-radius: 50%;
   background: var(--record);
   box-shadow: 0 0 0 10px rgba(255, 90, 79, 0.12);
@@ -290,28 +319,20 @@ h1 {
 }
 
 .record-button.armed {
-  border-color: rgba(85, 213, 164, 0.42);
+  border-color: color-mix(in srgb, var(--track) 46%, transparent);
 }
 
 .record-button.armed span {
-  background: var(--play);
-  box-shadow: 0 0 0 10px rgba(85, 213, 164, 0.12);
+  background: var(--track);
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--track) 14%, transparent);
 }
 
 .take-window {
   position: relative;
   display: grid;
-  height: 112px;
+  height: 92px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(245, 242, 233, 0.05) 0 1px,
-      transparent 1px 24px
-    ),
-    rgba(245, 242, 233, 0.04);
+  background: transparent;
 }
 
 .take-progress,
@@ -322,7 +343,10 @@ h1 {
 
 .take-progress {
   right: auto;
-  opacity: 0.36;
+  width: 2px;
+  background: rgba(245, 242, 233, 0.72);
+  opacity: 1;
+  transform: translateX(-1px);
 }
 
 .waveform {
@@ -335,6 +359,23 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.finish-line {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.finish-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.finish-actions .command-button {
+  min-width: 150px;
 }
 
 .sr-only {
@@ -359,38 +400,38 @@ h1 {
 
   .transport-actions {
     display: grid;
-    grid-template-columns: 42px 42px minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .track-head,
-  .track-body {
-    grid-template-columns: 1fr;
+    grid-template-columns: 42px 42px;
   }
 
   .track-title {
     justify-content: space-between;
   }
 
-  .track-actions {
-    justify-content: flex-start;
-  }
-
   .sync-panel label {
     grid-template-columns: 1fr;
   }
 
-  .record-button {
-    min-height: 84px;
-    grid-template-columns: 38px auto;
+  .track-body {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
   }
 
-  .record-button span {
-    width: 32px;
-    height: 32px;
+  .track-controls {
+    grid-template-columns: repeat(2, 42px);
   }
 
   .take-window {
-    height: 98px;
+    height: 86px;
+  }
+
+  .mute-button {
+    grid-column: span 2;
+    width: 91px;
+  }
+
+  .finish-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
 }
